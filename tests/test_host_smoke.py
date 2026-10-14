@@ -210,6 +210,81 @@ class HostSmokeTests(unittest.TestCase):
         ]
         self.assertEqual(host_smoke.claude_read_paths(events), {str(Path("/tmp/skill/SKILL.md").resolve())})
 
+    def test_claude_command_allows_native_skill_load_with_project_settings_only(self):
+        command, adapter = host_smoke.host_command("claude", Path("/tmp/isolated"), None)
+        self.assertEqual(command[command.index("--tools") + 1], "Skill,Read,Glob,Grep")
+        self.assertEqual(command[command.index("--allowedTools") + 1], "Skill,Read,Glob,Grep")
+        self.assertEqual(command[command.index("--setting-sources") + 1], "project")
+        self.assertEqual(adapter["tools"], ["Skill", "Read", "Glob", "Grep"])
+
+    def test_claude_native_skill_load_binds_injected_body_to_copied_master(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory).resolve() / "project"
+            skill = project / ".agents" / "skills" / "demo"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: demo\ndescription: demo\n---\n\n# Demo\n\n본문\n", encoding="utf-8")
+            (project / ".claude" / "skills").mkdir(parents=True)
+            (project / ".claude" / "skills" / "demo").symlink_to(Path("../../.agents/skills/demo"))
+            base = project / ".claude" / "skills" / "demo"
+
+            def trace(text: str, synthetic=True, is_error=None, between=False) -> list[dict]:
+                result = {"type": "tool_result", "tool_use_id": "skill-1", "content": "Launching skill: demo"}
+                if is_error is not None:
+                    result["is_error"] = is_error
+                rows = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "skill-1", "name": "Skill", "input": {"skill": "demo"}}]}},
+                        {"type": "user", "message": {"content": [result]}}]
+                if between:
+                    rows.append({"type": "assistant", "message": {"content": [{"type": "text", "text": "중간"}]}})
+                rows.append({"type": "user", "isSynthetic": synthetic, "message": {"content": [{"type": "text", "text": text}]}})
+                return rows
+
+            injected = f"Base directory for this skill: {base}\n\n# Demo\n\n본문\n\n\nARGUMENTS: 질문"
+            master = {str((skill / "SKILL.md").resolve())}
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(injected), project), master)
+            self.assertIn({"type": "tool.read", "path": next(iter(master)), "success": True},
+                          host_smoke.normalized_events("claude", trace(injected), project))
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(injected, synthetic=None), project), set())
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(injected, is_error=True), project), set())
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(injected, between=True), project), set())
+            changed = f"Base directory for this skill: {base}\n\n# Demo\n\n다른 본문"
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(changed), project), set())
+            outside = f"Base directory for this skill: {Path(directory).resolve()}\n\n# Demo\n\n본문"
+            (Path(directory) / "SKILL.md").write_text("# Demo\n\n본문\n", encoding="utf-8")
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(outside), project), set())
+            extra = f"Base directory for this skill: {base}\n\n# Demo\n\n본문\n\n덧붙은 지시"
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(extra), project), set())
+            # Claude strips a BOM and keeps the file's line endings; both must still bind.
+            (skill / "SKILL.md").write_bytes("﻿--- \r\nname: demo\r\ndescription: demo\r\n---\r\n\r\n# Demo\r\n\r\n본문\r\n".encode("utf-8"))
+            crlf = f"Base directory for this skill: {base}\n\n# Demo\r\n\r\n본문\r\n"
+            self.assertEqual(host_smoke.claude_skill_load_paths(trace(crlf), project), master)
+
+    def test_claude_substitution_pattern_matches_the_static_checker(self):
+        import check_package
+        self.assertEqual(host_smoke.CLAUDE_SUBSTITUTION.pattern, check_package.CLAUDE_SUBSTITUTION.pattern)
+
+    def test_claude_substitution_in_skill_body_blocks_before_the_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare_run(Path(directory), "claude")
+            state = json.loads((run / "run.json").read_text(encoding="utf-8"))
+            skill = Path(state["project"]) / ".agents/skills/demo/SKILL.md"
+            skill.write_text("---\nname: demo\ndescription: demo\n---\n# Demo\n\n가격은 $1,000이다.\n", encoding="utf-8")
+            state["freeze_snapshot"] = package_snapshot(state)
+            (run / "run.json").write_text(json.dumps(state), encoding="utf-8")
+            fake = executable(Path(directory), "raise SystemExit('must not run')\n")
+            record = host_smoke.run(run, "prompt.txt", 3, fake)
+            self.assertEqual(record["errors"][-1]["code"], "claude-skill-substitution")
+            self.assertNotIn("attempt_claimed", record)
+            self.assertEqual(load_state(run)["host_attempts"], 0)
+
+    def test_claude_mock_host_records_native_skill_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare_run(Path(directory), "claude")
+            fake = executable(Path(directory), "import json, os, sys\nsys.stdin.read()\nbase=os.path.abspath('.claude/skills/demo')\nprint(json.dumps([{'type':'assistant','message':{'content':[{'type':'tool_use','id':'skill-1','name':'Skill','input':{'skill':'demo'}}]}},{'type':'user','message':{'content':[{'type':'tool_result','tool_use_id':'skill-1','content':'Launching skill: demo'}]}},{'type':'user','isSynthetic':True,'message':{'content':[{'type':'text','text':'Base directory for this skill: '+base+'\\n\\n# Demo\\n'}]}},{'type':'result','uuid':'claude-result','is_error':False,'result':'Claude 답변'}]))\n")
+            record = host_smoke.run(run, "prompt.txt", 3, fake)
+            self.assertEqual(record["verdict"], "pass")
+            self.assertTrue(record["native_skill_load"])
+            self.assertEqual([proof["path"] for proof in record["proof_files"]], ["host/project/.agents/skills/demo/SKILL.md"])
+
     def test_antigravity_import_trace_requires_real_tool_binding(self):
         with tempfile.TemporaryDirectory() as directory:
             run = prepare_run(Path(directory), "antigravity")
@@ -267,6 +342,7 @@ class HostSmokeTests(unittest.TestCase):
             fake = executable(Path(directory), "import json, os, sys\nsys.stdin.read()\npath=os.path.abspath('.agents/skills/demo/SKILL.md')\nprint(json.dumps([{'type':'assistant','message':{'content':[{'type':'tool_use','id':'read-1','name':'Read','input':{'file_path':path}}]}},{'type':'user','message':{'content':[{'type':'tool_result','tool_use_id':'read-1','is_error':False,'content':'skill'}]}},{'type':'result','uuid':'claude-result','is_error':False,'result':'Claude 최종 답변'}]))\n")
             record = host_smoke.run(run, "prompt.txt", 3, fake)
             self.assertEqual(record["verdict"], "pass")
+            self.assertFalse(record["native_skill_load"])
             self.assertEqual(record["answer_event_id"], "claude-result")
             self.assertEqual((run / record["answer_file"]).read_text(encoding="utf-8"), "Claude 최종 답변")
 

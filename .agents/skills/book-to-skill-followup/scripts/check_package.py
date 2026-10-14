@@ -28,6 +28,8 @@ except ImportError:
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 HTML_ID = re.compile(r"\bid\s*=\s*(['\"])(.*?)\1", re.IGNORECASE)
 INSTRUCTION = re.compile(r"\b(?:run|execute|install|delete|remove|curl|wget|npm\s+install|pip\s+install)\b|(?:실행|설치|삭제)\b", re.IGNORECASE)
+# Same pattern as host_smoke: Claude Code substitutes or executes these when it loads a SKILL.md body.
+CLAUDE_SUBSTITUTION = re.compile(r"\$(?:ARGUMENTS|\d+|\{CLAUDE_[A-Z_]+\})|!`|```!")
 ADVISORY = re.compile(r"\b(?:example|quoted?|citation|book|do not run)\b|(?:예시|인용|책|실행하지)\b", re.IGNORECASE)
 FOLLOWUP_SKILL_PATHS = tuple(Path(host) / "skills" / "book-to-skill-followup"
                             for host in (".agents", ".claude", ".codex", ".agent"))
@@ -368,6 +370,11 @@ def run(project: Path, skill: str, documents: list[str], run_dir: Path | None) -
         errors.append({"file": "SKILL.md", "code": "missing-skill", "message": "SKILL.md is required"})
     else:
         read_front_matter(skill_file, errors, root)
+        body = re.sub(r"^﻿?---\s*\n[\s\S]*?---\s*\n?", "", skill_file.read_text(encoding="utf-8"), count=1)
+        tokens = sorted(set(CLAUDE_SUBSTITUTION.findall(body)))
+        if tokens:
+            warnings.append({"file": "SKILL.md", "code": "claude-load-substitution",
+                             "message": "Claude Code rewrites these in the SKILL.md body at load: " + ", ".join(tokens)})
     files = package_files(root, project, errors)
     document_paths: list[Path] = []
     for supplied in documents:

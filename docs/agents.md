@@ -42,6 +42,11 @@ Claude Code의 에이전트 형식과 스킬 동작은 [Claude Code 하위 에�
 
 2026-10-12의 Claude Code 2.1.296 실제 초기화 로그에서 이 스킬과 세 역할 이름을 발견했습니다. 이후 OAuth 세션 만료·자동 갱신 실패로 요청 수행은 차단됐고, 사용자 요청에 따라 추가 호출을 하지 않았습니다. 발견·등록 확인을 행동 시험 통과로 표시하지 않습니다.
 
+2026-10-14에는 같은 버전으로 책 지식 스킬을 실제 호출하면서 기존 Claude 어댑터의 결함을 찾았습니다. Claude Code가 `Skill` 도구로 스킬을 불러올 때는 SKILL.md를 Read로 읽지 않는데, 기존 어댑터는 `Skill` 도구를 막고 SKILL.md Read만 로드 증거로 인정했습니다. 그래서 실제 네이티브 로드는 실패로, 모델이 파일을 직접 연 경우만 통과로 판정하는 구조였습니다. 어댑터가 `Skill` 로드를 허용하고, 주입된 본문을 고정 SKILL.md와 대조해 결속하도록 고쳤습니다. 사용자 수준 스킬·플러그인은 `--setting-sources project`로 제외합니다. 보완한 어댑터로 시험 스킬을 실제 호출해 통과했고 `native_skill_load: true`를 확인했습니다. 자세한 내용은 [Claude Code 실제 호출과 어댑터 보완](validation.md#claude-code-실제-호출과-어댑터-보완)에 있습니다. 후속 스킬의 전체 FLOW를 Claude Code에서 다시 수행한 것은 아닙니다.
+
+> [!TIP]
+> Claude Code의 `-p` 모드에서 `/스킬이름`으로 시작한 요청은 실행 로그에 로드 이벤트를 남기지 않습니다. 자동 host-smoke 입력은 "<스킬이름> 스킬을 사용해서 …"처럼 스킬 이름을 넣어 작성합니다.
+
 ---
 
 ## Antigravity
@@ -63,7 +68,8 @@ AGY CLI 1.3.3에서 `/book-to-skill-followup`을 실제 확장하고, 원문·�
 |---|---|---|---|
 | 공통 스킬 배치 | `.agents/skills/` | `.agents/skills/` + `.claude/skills/` 별칭 | `.agents/skills/` |
 | 선택 역할 프로필 | `.codex/agents/*.toml` | `.claude/agents/*.md` | `.agents/agents/*.md` |
-| 매 실행 실제 호출 | 사용 중이면 1회 | 사용 중이면 1회 | 사용 중이면 1회 |
+| 매 실행 실제 호출(host-smoke) | 사용 중이면 1회 | 사용 중이면 1회 | 사용 중이면 1회 |
+| freeze 전 행동 시험의 CLI 실행 | 격리 인자로 수행 | 격리 인자로 수행 | 격리 보장 불가, 직접 CLI 시험 범위 또는 한계로 기록 |
 | 사용하지 않는 호스트 | 정적 배치 검사로 기록 | 정적 배치 검사로 기록 | 정적 배치 검사로 기록 |
 
 > [!WARNING]

@@ -4,6 +4,16 @@
 
 `OAuth session expired and could not be refreshed`는 스킬 미발견과 다른 인증 차단입니다. init에서 스킬·역할을 발견했더라도 실제 답변과 성공 종료가 없으면 행동 시험은 통과하지 못합니다. 인증 오류 원문과 종료 결과를 보존하고, 사용자가 건너뛰기로 정하면 해당 호스트를 추가 호출하지 않습니다. 비밀번호·토큰을 검증 기록이나 프롬프트에 넣지 않습니다.
 
+## Claude Code가 스킬을 불러왔는데 로드 증거가 없음
+
+| 증상 | 원인 | 처리 |
+|---|---|---|
+| host-smoke 입력이 `/스킬이름 …`인데 `load-proof-unavailable` | `-p` 모드의 slash 확장은 stream-json에 로드 이벤트를 남기지 않음 | 같은 run에서 다시 호출하지 않고 새 run에서 "<스킬이름> 스킬을 사용해서 …"처럼 스킬 이름을 넣은 요청으로 시험 |
+| host-smoke가 `claude-skill-substitution`으로 차단 | SKILL.md 본문에 Claude Code가 불러올 때 바꿔 쓰는 표기(`$1`, `$ARGUMENTS`, `${CLAUDE_SKILL_DIR}`, `` !`명령` ``)가 있음 | 호출 한도는 쓰지 않았다. 새 run에서 해당 표기를 참조 파일로 옮기거나 바꿔 쓴 뒤 다시 고정 |
+| `loaded: true`인데 `native_skill_load: false` | 원인 후보: 모델이 `Skill` 도구 대신 SKILL.md를 Read로 직접 열었음, 또는 `Skill` 로드가 아래 행의 이유로 인정되지 않고 Read 기록만 남음 | 파일 사용 증거로 기록하고 네이티브 로드와 구분해 보고 |
+| `Skill` 로드 이벤트는 있는데 증거로 인정되지 않음 | 주입 본문이 고정 SKILL.md와 다름(다른 버전) 또는 기준 경로가 격리 복사본 밖(상위 폴더의 같은 id 사본) | 실패로 남기고 원인을 기록. 상위 폴더 사본이 원인이면 새 run의 실행 위치를 확인 |
+| 자연어 요청으로 스킬이 자동 호출되지 않음 | 원인 후보: 설치된 스킬이 많아 목록에서 설명이 생략됨, 설명과 요청의 표현 차이 | 사용 문서에 `/스킬이름` 직접 호출 안내를 둠 |
+
 ## Antigravity 종료는 성공인데 읽기 근거가 없음
 
 AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장하지 않습니다. 원래 로그의 view_file ACTIVE/DONE 쌍, AbsolutePath, 출력과 tool_info.error를 확인합니다. 승인 거부·오류·완료 이벤트 부재·다른 conversation의 결과는 유효한 읽기 근거로 승격하지 않습니다. [실제 로그 계약](../.agents/skills/book-to-skill-followup/references/host-adapters.md#antigravity-네이티브-실행-로그)을 참고하세요.

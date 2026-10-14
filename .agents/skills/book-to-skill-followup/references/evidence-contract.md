@@ -22,7 +22,7 @@ toolchain의 fingerprint는 제작 도구를 책 subject에 복사하라는 뜻�
 | improvement | changes, units_covered, revisions(상태의 현재 값), 보완·재검사 범위 |
 | language-review | subject_digest, 제작자와 다른 reviewer_id, `humanizer → grammar-checker → style-guide` pipeline, pinned upstream path/hash/commit, reviewed_files, meaning_preservation, 빈 blockers/remaining_findings, 별도 human/agent 검토 기록 |
 | freeze | subject_digest, 독립 reviewer_id, blockers 빈 배열, addressed_findings, independent_review_evidence와 직접 내용 검토 |
-| host-smoke | host/returncode/loaded/turn_completed/subject_digest/trace_file/trace_sha256/proof_files와 한계 |
+| host-smoke | host/returncode/loaded/turn_completed/subject_digest/trace_file/trace_sha256/proof_files와 한계, Claude는 native_skill_load |
 | final-review | subject_digest, 독립 reviewer_id, blockers, post_host: true |
 
 changes는 허용된 프로젝트 상대 path만 쓴다. 변화가 없으면 빈 배열이다. inventory status는 mapped/missing/excluded이며 누락/제외는 reason을 쓴다. 주장 origin은 author/synthesis/validation-guidance/proposal이다.
@@ -41,7 +41,7 @@ read_files는 path/sha256/scope를 기록한다. scope=project는 프로젝트 �
 
 대표 연계 시험은 기존 case와 input/answer/evidence_artifacts로 선행 결과·채운 후속 입력·새 컨텍스트의 후속 답변을 연결한다. 앞선 결과를 후속 입력으로 제공한 것과 평가 결론을 누설한 것을 구분한다. 시험한 버전·실제 읽기 범위·판정 기준을 기록하고 전체 문서 검토와 수행한 case의 통과 범위를 별도로 보고한다.
 
-host proof_files는 run 상대 path/sha256 객체 목록이다. trace_file의 JSON에는 실제 호스트 로그에서 추출한 성공 read 이벤트와 turn.completed가 있어야 하고, 격리 복사한 SKILL.md가 읽힌 증거를 포함해야 한다. 정상 종료와 loaded 자기 주장만으로는 부족하다.
+host proof_files는 run 상대 path/sha256 객체 목록이다. trace_file의 JSON에는 실제 호스트 로그에서 추출한 성공 read 이벤트와 turn.completed가 있어야 하고, 격리 복사한 SKILL.md가 읽힌 증거를 포함해야 한다. 정상 종료와 loaded 자기 주장만으로는 부족하다. Claude는 `Skill` 도구로 스킬을 불러올 때 SKILL.md를 Read로 읽지 않는다. 그래서 성공한 `Skill` 결과 바로 다음의 합성 메시지가 격리 복사본의 기준 경로와 고정 SKILL.md 본문에 정확히 맞을 때만 그 SKILL.md read로 정규화한다. 세부 조건은 [호스트 연동](host-adapters.md#claude-code-로드-증거와-격리)을 따른다. record의 `native_skill_load`는 Read로 연 기록과 네이티브 로드를 구분하며, verify가 원래 로그에서 다시 계산한 값과 같아야 한다.
 
 language-review의 `pipeline`과 `upstream_skills`는 `humanizer`, `grammar-checker`, `style-guide` 순서의 정확한 3개 항목이다. 각 upstream 항목은 `id`, `path`, `sha256`, `commit`을 가지며 `assets/korean-skills/provenance.json`의 DaleSeo/korean-skills commit `ae12ba27982ebeff03b46dc738365aaa34260d9a`와 현재 vendored `SKILL.md` 바이트에 일치해야 한다. provenance는 자체 파일을 제외한 vendor tree의 모든 regular file을 중복 없는 path/SHA-256으로 정확히 선언하고, symlink·누락·미선언 파일·변조를 허용하지 않는다. `LICENSE`에는 비어 있지 않은 MIT 고지가 있어야 하며 local patch는 원본·bundled SHA-256을 기록한다.
 

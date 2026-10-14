@@ -8,6 +8,8 @@
 
 스킬 전체에 역할 지침과 보조기가 포함된다. 전용 프로필이 없어도 네이티브 새 에이전트에 계약을 전달할 수 있다. 전역 설정·모델·인증을 바꾸지 않는다. 독립 세션도 불가능하면 필수 평가를 blocked로 기록한다.
 
+대상 지식 스킬의 프런트매터는 세 호스트가 함께 받아들이는 키(name, description 등 공통 검증기가 허용하는 키)만 쓴다. Claude의 `argument-hint`처럼 한 호스트 전용 키는 다른 호스트의 검증기가 거부할 수 있으므로 넣지 않는다.
+
 Codex는 $book-to-skill-followup, Claude Code는 /book-to-skill-followup, Antigravity는 지원 버전의 slash 또는 스킬 이름을 포함한 자연어로 호출한다. 구형 IDE workflow는 만들지 않는다. [Claude 스킬](https://code.claude.com/docs/en/skills), [Claude 에이전트](https://code.claude.com/docs/en/sub-agents), [Antigravity 스킬](https://antigravity.google/docs/skills), [Antigravity 에이전트](https://antigravity.google/docs/subagents/), [전환 안내](https://antigravity.google/docs/migration/workflows-to-skills/)와 실제 버전 도움말을 대조한다.
 
 ## 실제 호출
@@ -17,6 +19,18 @@ Codex는 $book-to-skill-followup, Claude Code는 /book-to-skill-followup, Antigr
 읽기 범위를 제한하고 제한을 보장할 수 없으면 blocked로 처리한다. hooks/MCP 차단은 해당 호출 override이며 개인 설정을 바꾸지 않는다. 로그인·승인 우회를 하지 않는다. 사용 호스트 1개는 실제 검사, 나머지는 정적 형식 수준으로 표시한다.
 
 통과는 실제 스킬 로드/읽기 추적, 요청 수행, 정상 종료, 고정 해시 일치가 필요하다. 답변의 자기 주장·링크 존재·exit 0만으로 loaded를 참으로 두지 않는다. CLI 결과는 GUI 메뉴 발견을 보증하지 않는다. 실패·시간 초과·인증 부재 뒤 재호출하지 않고 새 run에서 보완한다.
+
+## Claude Code 로드 증거와 격리
+
+Claude Code가 `Skill` 도구로 스킬을 불러올 때는 SKILL.md를 Read 도구로 읽지 않는다. 스킬 이름을 넣은 요청이나 자연어 요청에서 모델이 `Skill` 도구를 고르면 `Skill` 도구 호출 → `Launching skill: <id>` 결과 → `isSynthetic` 사용자 메시지 순서로 불러온다. 이 메시지는 `Base directory for this skill: <경로>` 한 줄과 프런트매터를 뺀 SKILL.md 본문, 인자가 있으면 끝의 `ARGUMENTS:` 줄로 이뤄진다. `Skill` 도구가 있어도 모델이 SKILL.md를 Read로 직접 여는 경우가 있다.
+
+helper는 성공한 `Skill` 결과 바로 다음의 이 메시지만 인정한다. 기준 경로가 격리 복사본 안에 있고, 본문이 고정 SKILL.md 본문과 같으며 뒤에 `ARGUMENTS:` 줄 말고는 없을 때 그 SKILL.md read로 정규화한다. 줄바꿈 형식과 BOM 차이는 Claude Code와 같은 방식으로 맞춘다. record에는 `native_skill_load`를 남기고, run_state가 원래 로그에서 같은 값을 다시 계산해 대조한다. 모델이 Read로 SKILL.md를 연 기록은 파일 사용 증거로 인정하되 네이티브 로드와 구분해 보고한다.
+
+Claude Code는 불러온 본문의 `$ARGUMENTS`, `$0`·`$1` 같은 위치 인자, `${CLAUDE_SKILL_DIR}` 같은 변수를 바꿔 쓰고 `` !`명령` ``은 셸로 실행하려 한다. 인자가 있으면 "$1,000"이 인자의 단어로 바뀌는 것을 2.1.296에서 확인했다. 이런 표기는 실제 사용에서도 본문을 바꾸므로 대상 SKILL.md에 두지 않는다. helper는 이런 표기가 있으면 호출 한도를 쓰기 전에 `claude-skill-substitution`으로 차단하고, static-checks는 `claude-load-substitution` 경고를 낸다.
+
+`-p` 모드에서 `/<id>`로 시작한 요청은 stream-json에 로드 이벤트를 남기지 않는다(2.1.296에서 확인). 그래서 자동 host-smoke 입력은 `<id> 스킬을 사용해서 …`처럼 스킬 이름을 넣은 실제 사용 요청으로 쓴다. slash 로드는 `-p` 로그로 증명할 수 없다. behavior-tests에서는 간접 근거로만 기록하고, 직접 확인은 대화형 세션에서 따로 하거나 한계로 남긴다.
+
+어댑터는 `--setting-sources project`로 사용자 수준 스킬·플러그인·설정을 이 호출에서만 제외한다. 원래 로그 init 이벤트의 `skills` 수가 프로젝트 수준으로 줄었는지 확인한다. 사용자 설정의 모델 선택, `env`, `apiKeyHelper`도 빠지므로 init 이벤트의 `model`을 보고에 적고, 이런 설정에 기대는 인증 환경이면 호출 전에 확인한다. 실행 폴더의 상위 폴더에 있는 `.claude/skills`는 여전히 발견된다. 상위 폴더의 `CLAUDE.md`·`AGENTS.md`가 이 호출의 지시로 함께 읽히는지는 시험하지 않았으므로, 대상 프로젝트에 이런 파일이 있으면 한계로 적는다. 같은 id가 있으면 2.1.296에서는 가까운 격리 복사본이 선택됐다. 상위 사본이 선택되면 기준 경로가 격리 복사본 밖이므로 로드 증거로 인정하지 않는다. 권한 확인이 필요한 도구 호출은 `--permission-prompts none`으로 자동 거부되며 `permission_denied` system 이벤트로 남는다. 스킬 폴더 밖 파일을 열려던 시도는 이 이벤트와 도구 입력으로 확인한다.
 
 ## 장시간 실행 도구
 
@@ -49,7 +63,7 @@ import는 기존 quota 1회와 동일한 격리 복사본을 검증하며 재호
 
 위의 최종 지식 스킬 검사는 후속 스킬의 slash 발견·확장을 직접 증명하지 않는다. 후속 스킬 자체는 별도 시험 프로젝트·별도 실행 ID에서 `/book-to-skill-followup`과 대상·원문을 제공해 시험한다. 읽기 전용으로 0–2단계 예비 검토만 요청했다면 실제 발견/확장, 자료 읽기, 답변, 종료와 남은 조건을 기록하고 전체 FLOW 완료로 표현하지 않는다.
 
-Claude의 init `skills`/`agents`는 발견·등록 증거이며 요청 수행의 증거가 아니다. `result.is_error: true`는 subtype이나 종료 메시지와 무관하게 실패다. Read의 정상 tool_result는 공식 예제처럼 is_error를 생략할 수도 있으므로 요청 ID와 결과 내용을 결속한다. [공식 도구 결과](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls).
+Claude의 init `skills`/`agents`는 발견·등록 증거이며 요청 수행의 증거도, 스킬 로드의 증거도 아니다. `result.is_error: true`는 subtype이나 종료 메시지와 무관하게 실패다. Read의 정상 tool_result는 공식 예제처럼 is_error를 생략할 수도 있으므로 요청 ID와 결과 내용을 결속한다. [공식 도구 결과](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls).
 
 Antigravity init의 `expanded_commands`는 실제 slash 확장 증거이며 view_file 읽기와 별도로 표시한다. 발견/확장을 파일 읽기라고 바꾸어 기록하지 않는다. OAuth 만료 등 인증 실패는 원래 로그를 남기고, 다른 인증이나 권한 우회로 성공을 만들지 않는다. 사용자가 해당 호스트를 건너뛰라고 하면 추가 호출하지 않는다.
 

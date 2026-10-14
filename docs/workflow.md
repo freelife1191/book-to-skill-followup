@@ -14,7 +14,7 @@
 | `skill-refinement` | 메인 에이전트 | 확인된 결함만 스킬·레퍼런스에 반영 | 직접 원칙·적용 지침·새 제안 구분 |
 | `documentation` | 메인 에이전트 | README·상세 가이드·예시 보완 | 기본 사용과 고급 활용 경로 제공 |
 | `static-checks` | 메인 에이전트 | 파일·해시·경로·링크·앵커·호스트 배치 검사 | 필수 구조 통과와 제외 범위 명시 |
-| `behavior-tests` | `forward-tester` | 최소 자료만 받은 새 컨텍스트의 대표·회귀 시험 | 사전 기준을 만족하는 판정과 증거 |
+| `behavior-tests` | `forward-tester` | 최소 자료만 받은 새 컨텍스트의 대표·회귀 시험, 일부는 사용 호스트 CLI 새 세션으로 실행 | 사전 기준을 만족하는 판정과 증거, 원래 로그의 로드·접근·읽기 범위 점검 |
 | `improvement` | 메인 에이전트 | 실패 근거에 맞춘 최소 수정과 재검사 | 보완 횟수·영향 범위 기록 |
 | `language-review` | `release-reviewer` | `humanizer → grammar-checker → style-guide`로 한국어 문장·문법·용어를 독립 검수 | 현재 Markdown·JSON·YAML 전체, 출처 해시, 의미 보존 6개 항목 |
 | `freeze` | `release-reviewer` | 최종 스킬·문서·시험 기준 해시 고정 | 검토할 버전이 하나로 고정 |

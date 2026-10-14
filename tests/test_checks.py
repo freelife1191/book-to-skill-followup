@@ -50,6 +50,15 @@ def test_recursive_package_and_documents_pass(tmp_path):
     assert {row["path"] for row in report["scanned_files"]} >= {"README.md", "docs/usage.md", ".agents/skills/demo/guide.md"}
 
 
+def test_claude_load_substitution_is_warned(tmp_path):
+    project = make_project(tmp_path)
+    skill = project / ".agents" / "skills" / "demo"
+    (skill / "SKILL.md").write_text("---\nname: demo\ndescription: demo\n---\n# Demo\n\n가격은 $1,000이다.\n", encoding="utf-8")
+    report = check_package.run(project, ".agents/skills/demo", [], None)
+    assert report["verdict"] == "pass"
+    assert [item["code"] for item in report["warnings"] if item["code"] == "claude-load-substitution"] == ["claude-load-substitution"]
+
+
 def test_invalid_local_link_and_structured_file_fail(tmp_path):
     project = make_project(tmp_path)
     skill = project / ".agents" / "skills" / "demo"
@@ -303,6 +312,10 @@ class CheckPackageTests(unittest.TestCase):
     def test_invalid_local_link_and_structured_file_fail(self):
         with tempfile.TemporaryDirectory() as directory:
             test_invalid_local_link_and_structured_file_fail(Path(directory))
+
+    def test_claude_load_substitution_is_warned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            test_claude_load_substitution_is_warned(Path(directory))
 
     def test_generated_cache_is_excluded_but_cache_symlink_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

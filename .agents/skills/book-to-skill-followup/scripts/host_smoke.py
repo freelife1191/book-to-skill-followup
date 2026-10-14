@@ -71,10 +71,13 @@ def host_command(host: str, project: Path, executable: str | None) -> tuple[list
         command.append("-")  # The one user request is stdin; skill content and paths are never injected.
         return command, {"mode": "codex-readonly", "mcp_servers_disabled": names}
     if host == "claude":
+        # Skill is how Claude Code loads a named skill; project-only settings keep user skills/plugins out.
+        tools = "Skill,Read,Glob,Grep"
         return ["claude", "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
-                "--tools", "Read,Glob,Grep", "--allowedTools", "Read,Glob,Grep", "--permission-mode", "plan",
+                "--setting-sources", "project", "--tools", tools, "--allowedTools", tools, "--permission-mode", "plan",
                 "--permission-prompts", "none", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-                "--settings", '{"disableAllHooks":true}'], {"mode": "claude-readonly", "tools": ["Read", "Glob", "Grep"]}
+                "--settings", '{"disableAllHooks":true}'], {"mode": "claude-readonly", "tools": tools.split(","),
+                                                             "setting_sources": ["project"]}
     if host in {"agy", "antigravity"}:
         return None, {"code": "capability-blocked", "message": "AGY CLI help exposes sandboxing but no least-tool read-only and MCP-isolation contract"}
     return None, {"code": "unsupported-host", "message": f"no safe adapter for host {host!r}"}
@@ -125,6 +128,7 @@ def normalized_events(host: str, raw_events: list[dict], project: Path) -> list[
         paths.update(codex_read_paths(raw_events, project))
     elif host == "claude":
         paths.update(claude_read_paths(raw_events))
+        paths.update(claude_skill_load_paths(raw_events, project))
     elif host == "antigravity":
         paths.update(agy_read_paths(raw_events))
     normalized = [{"type": "tool.read", "path": path, "success": True} for path in sorted(paths)]
@@ -346,6 +350,60 @@ def claude_read_paths(events: list[dict]) -> set[str]:
     return paths
 
 
+SKILL_BASE_PREFIX = "Base directory for this skill: "
+# Claude Code rewrites these in the injected body: $1 becomes an argument word, !`cmd` runs a shell.
+CLAUDE_SUBSTITUTION = re.compile(r"\$(?:ARGUMENTS|\d+|\{CLAUDE_[A-Z_]+\})|!`|```!")
+
+
+def skill_body(text: str) -> str:
+    """Return SKILL.md as Claude injects it: no BOM or frontmatter, LF line endings."""
+    text = text.lstrip("﻿").replace("\r\n", "\n")
+    # Mirrors Claude Code 2.1.296's own frontmatter pattern and guard.
+    match = re.match(r"---\s*\n[\s\S]*?---\s*\n?", text) if text.find("---", 3) >= 0 else None
+    return (text[match.end():] if match else text).strip()
+
+
+def claude_skill_load_paths(events: list[dict], project: Path) -> set[str]:
+    """Bind Claude Code's native Skill load to the copied SKILL.md it injected.
+
+    Claude loads a skill without a Read call: a successful ``Skill`` tool result
+    is followed by a synthetic user message holding the base directory and the
+    SKILL.md body (plus an optional ``ARGUMENTS:`` tail).  Only that adjacent
+    message, a base directory inside ``project`` and the exact body count.
+    """
+    project = project.resolve()
+    skill_calls: set[str] = set()
+    launched = False
+    paths: set[str] = set()
+    for event in events:
+        if not isinstance(event, dict) or event.get("type") not in {"assistant", "user"}:
+            continue
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        blocks = [block for block in content if isinstance(block, dict)] if isinstance(content, list) else []
+        text = blocks[0].get("text") if len(blocks) == 1 and blocks[0].get("type") == "text" else None
+        if (launched and event["type"] == "user" and event.get("isSynthetic") is True and isinstance(text, str)
+                and text.startswith(SKILL_BASE_PREFIX)):
+            base, _, injected = text[len(SKILL_BASE_PREFIX):].partition("\n")
+            master = project_file(str(Path(base.strip()) / "SKILL.md"), project)
+            try:
+                body = skill_body(master.read_text(encoding="utf-8")) if master else ""
+            except (OSError, UnicodeDecodeError):
+                body = ""
+            rest = injected.replace("\r\n", "\n").strip()
+            tail = rest[len(body):].strip() if body and rest.startswith(body) else None
+            if tail is not None and (not tail or tail.startswith("ARGUMENTS: ")):
+                paths.add(str(master))
+        launched = False
+        for block in blocks:
+            if block.get("type") == "tool_use" and block.get("name") == "Skill" and isinstance(block.get("id"), str):
+                skill_calls.add(block["id"])
+            elif (block.get("type") == "tool_result" and block.get("tool_use_id") in skill_calls
+                  and block.get("is_error") is not True):
+                launched = True
+    return paths
+
+
 def agy_read_paths(events: list[dict]) -> set[str]:
     """Bind legacy results or native AGY DONE steps to their original requests."""
     if any("event" in event for event in events):
@@ -506,6 +564,16 @@ def run(run_dir: Path, prompt_rel: str, timeout: int, executable: str | None, im
             record["errors"].append(adapter)
             record["static_compatibility"] = True
             return record
+    if host == "claude":
+        try:
+            risky = sorted(set(CLAUDE_SUBSTITUTION.findall(skill_body((root / "SKILL.md").read_text(encoding="utf-8")))))
+        except (OSError, UnicodeDecodeError) as exc:
+            risky = [f"unreadable SKILL.md: {exc}"]
+        if risky:
+            # Blocked before the one attempt is spent: the injected body could never match the frozen file.
+            record["errors"].append({"code": "claude-skill-substitution",
+                                     "message": "SKILL.md body has text Claude Code rewrites at load: " + ", ".join(risky)})
+            return record
     if prepared is None:
         try:
             claim_host(run_dir)
@@ -620,6 +688,9 @@ def run(run_dir: Path, prompt_rel: str, timeout: int, executable: str | None, im
     record["turn_completed"] = complete
     record["proof_files"] = [{"path": str(Path(path).relative_to(run_dir)), "sha256": sha256_file(Path(path))}
                              for path in sorted(copied & reads)]
+    if host == "claude":
+        # A Read of SKILL.md shows file use; only the Skill-tool injection shows Claude's own skill loading.
+        record["native_skill_load"] = bool(copied & claude_skill_load_paths(raw_events, project))
     if complete and record["proof_files"]:
         record.update({"verdict": "pass", "loaded": True})
     else:

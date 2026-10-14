@@ -307,6 +307,28 @@ class RunStateTests(unittest.TestCase):
         deleted = json.loads(json.dumps(evidence)); (copy_root / "SKILL.md").unlink(); update_receipt(deleted)
         with self.assertRaises(StateError): _validate_evidence(state, "host-smoke", deleted, run)
 
+    def test_claude_native_skill_load_is_rederived_from_the_raw_trace(self) -> None:
+        run = self.init()
+        state = json.loads((run / "run.json").read_text(encoding="utf-8")); state["host_attempts"] = 1; state["host"] = "claude"
+        evidence = self.host_smoke_evidence(run, state)
+        project = run / "host/project"
+        (project / ".claude/skills").mkdir(parents=True)
+        (project / ".claude/skills/example").symlink_to(Path("../../.agents/skills/example"))
+        base = project / ".claude/skills/example"
+        raw_events = [
+            {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "skill-1", "name": "Skill", "input": {"skill": "example"}}]}},
+            {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "skill-1", "content": "Launching skill: example"}]}},
+            {"type": "user", "isSynthetic": True, "message": {"content": [{"type": "text", "text": f"Base directory for this skill: {base}\n\n# Example\n"}]}},
+            {"type": "result", "uuid": "answer-1", "is_error": False, "result": "최종 답변"},
+        ]
+        raw = run / evidence["raw_trace_file"]; raw.write_text("\n".join(json.dumps(row) for row in raw_events), encoding="utf-8")
+        trace = run / evidence["trace_file"]
+        trace.write_text(json.dumps({"events": run_state.normalized_events("claude", raw_events, project)}), encoding="utf-8")
+        evidence.update({"host": "claude", "native_skill_load": True, "raw_trace_sha256": sha256_file(raw), "trace_sha256": sha256_file(trace)})
+        _validate_evidence(state, "host-smoke", evidence, run)
+        evidence["native_skill_load"] = False
+        with self.assertRaises(StateError): _validate_evidence(state, "host-smoke", evidence, run)
+
     def test_host_smoke_requires_raw_read_of_the_copied_master(self) -> None:
         run = self.init()
         state = json.loads((run / "run.json").read_text(encoding="utf-8")); state["host_attempts"] = 1

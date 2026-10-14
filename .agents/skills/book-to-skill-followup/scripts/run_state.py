@@ -15,7 +15,7 @@ from typing import Any
 from runtime_common import (StateError, claim_host, ensure_relative, load_state,
                             mutate_state, package_snapshot, sha256_file,
                             workflow_snapshot)
-from host_smoke import digest_tree, final_answer, json_events, normalized_events
+from host_smoke import claude_skill_load_paths, digest_tree, final_answer, json_events, normalized_events
 
 STAGES = ["preflight", "inventory", "source-audit", "skill-refinement", "documentation",
           "static-checks", "behavior-tests", "improvement", "language-review", "freeze", "host-smoke", "final-review"]
@@ -643,6 +643,9 @@ def _validate_evidence(state: dict[str, Any], stage: str, data: Any, run: Path) 
                       if event.get("type") == "tool.read" and event.get("success") is True}
         if str(copied_master.resolve()) not in read_paths:
             _error("host raw trace lacks a successful read of the exact copied master SKILL.md")
+        if state["host"] == "claude" and data.get("native_skill_load") is not (str(copied_master.resolve()) in
+                claude_skill_load_paths(json_events(raw_trace.read_text(encoding="utf-8")), copied_project)):
+            _error("host native_skill_load does not match the raw trace")
     elif stage == "final-review":
         _independent_id(data.get("reviewer_id"), "final reviewer_id", producer)
         if _list(data.get("blockers"), "blockers") != []: _error("final review blockers must be empty")
