@@ -1,8 +1,27 @@
 # 문제 해결
 
+[← 프로젝트 소개](../README.md) · [가이드 홈](index.md) · [릴리스 노트](../release/README.md)
+
+<details open>
+<summary><strong>이 문서의 목차</strong></summary>
+
+- [Claude Code OAuth 만료](#doc-section-1)
+- [Claude Code가 스킬을 불러왔는데 로드 증거가 없음](#doc-section-2)
+- [Antigravity 종료는 성공인데 읽기 근거가 없음](#doc-section-3)
+- [입력 경로가 맞지 않음](#doc-section-4)
+- [도구·검사기가 실행되지 않음](#doc-section-5)
+- [독립성·기록 문제가 생김](#doc-section-6)
+- [호스트 검사가 막힘](#doc-section-7)
+
+</details>
+
+<a id="doc-section-1"></a>
+
 ## Claude Code OAuth 만료
 
 `OAuth session expired and could not be refreshed`는 스킬 미발견과 다른 인증 차단입니다. init에서 스킬·역할을 발견했더라도 실제 답변과 성공 종료가 없으면 행동 시험은 통과하지 못합니다. 인증 오류 원문과 종료 결과를 보존하고, 사용자가 건너뛰기로 정하면 해당 호스트를 추가 호출하지 않습니다. 비밀번호·토큰을 검증 기록이나 프롬프트에 넣지 않습니다.
+
+<a id="doc-section-2"></a>
 
 ## Claude Code가 스킬을 불러왔는데 로드 증거가 없음
 
@@ -14,11 +33,15 @@
 | `Skill` 로드 이벤트는 있는데 증거로 인정되지 않음 | 주입 본문이 고정 SKILL.md와 다름(다른 버전) 또는 기준 경로가 격리 복사본 밖(상위 폴더의 같은 id 사본) | 실패로 남기고 원인을 기록. 상위 폴더 사본이 원인이면 새 run의 실행 위치를 확인 |
 | 자연어 요청으로 스킬이 자동 호출되지 않음 | 원인 후보: 설치된 스킬이 많아 목록에서 설명이 생략됨, 설명과 요청의 표현 차이 | 사용 문서에 `/스킬이름` 직접 호출 안내를 둠 |
 
+<a id="doc-section-3"></a>
+
 ## Antigravity 종료는 성공인데 읽기 근거가 없음
 
 AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장하지 않습니다. 원래 로그의 view_file ACTIVE/DONE 쌍, AbsolutePath, 출력과 tool_info.error를 확인합니다. 승인 거부·오류·완료 이벤트 부재·다른 conversation의 결과는 유효한 읽기 근거로 승격하지 않습니다. [실제 로그 계약](../.agents/skills/book-to-skill-followup/references/host-adapters.md#antigravity-네이티브-실행-로그)을 참고하세요.
 
 ---
+
+<a id="doc-section-4"></a>
 
 ## 입력 경로가 맞지 않음
 
@@ -34,6 +57,8 @@ AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장�
 > 원문이 없거나 동일성을 확인할 수 없으면 기존 추출물을 원문처럼 확정하지 않습니다. 가능한 검수 범위와 제한을 명시합니다.
 
 ---
+
+<a id="doc-section-5"></a>
 
 ## 도구·검사기가 실행되지 않음
 
@@ -52,6 +77,8 @@ AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장�
 
 ---
 
+<a id="doc-section-6"></a>
+
 ## 독립성·기록 문제가 생김
 
 | 문제 | 처리 |
@@ -63,6 +90,8 @@ AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장�
 
 ---
 
+<a id="doc-section-7"></a>
+
 ## 호스트 검사가 막힘
 
 사용 중인 호스트의 인증, CLI, GUI, 권한 또는 실행 환경이 없어 실제 호출을 할 수 없으면 호스트 검사는 `blocked`입니다. 다른 호스트의 정적 프로필 검사로 대체해 완료를 주장하지 않습니다.
@@ -72,3 +101,6 @@ AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장�
 > [!WARNING]
 > 최종 호출에서 새로운 결함이 나오면 호출 로그는 보존하지만 완료 판정은 내리지 않습니다. 다음 실행에서 수정하고 처음부터 필요한 게이트를 다시 통과합니다.
 
+---
+
+[↑ 문서 처음](#문제-해결) · [가이드 홈](index.md) · [다음 릴리스 노트 작성](../release/_template.md)

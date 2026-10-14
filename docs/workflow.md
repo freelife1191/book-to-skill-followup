@@ -1,8 +1,24 @@
 # 전체 워크플로
 
+[← 프로젝트 소개](../README.md) · [가이드 홈](index.md) · [릴리스 노트](../release/README.md)
+
+<details open>
+<summary><strong>이 문서의 목차</strong></summary>
+
+- [단계와 게이트](#doc-section-1)
+- [원문 대조 기준](#doc-section-2)
+- [문서 보완 기준](#doc-section-3)
+- [제작 도구와 배포물 분리](#doc-section-4)
+- [재개와 무효화](#doc-section-5)
+- [단계 산출물 확인](#doc-section-6)
+
+</details>
+
 이 흐름은 스크립트가 문서 작성이나 모델 호출을 자동으로 대신하는 구조가 아닙니다. **메인 에이전트가 단계 순서대로 작업**하고, 실행 보조기가 상태·증거·의존성을 검사합니다.
 
 ---
+
+<a id="doc-section-1"></a>
 
 ## 단계와 게이트
 
@@ -30,6 +46,8 @@
 
 ---
 
+<a id="doc-section-2"></a>
+
 ## 원문 대조 기준
 
 원문을 읽을 때는 다음 네 층을 구분합니다.
@@ -49,6 +67,8 @@
 
 ---
 
+<a id="doc-section-3"></a>
+
 ## 문서 보완 기준
 
 대상 스킬의 루트 README와 `docs/`만 다룹니다. 프로젝트에 여러 스킬이 있으면 기존 루트 README는 보존하고, 해당 스킬의 상세 가이드를 `docs/` 아래 별도 영역으로 둡니다.
@@ -67,11 +87,15 @@ Markdown의 표·구분선·강조·알림 블록은 정보의 역할에 맞춰 
 
 보강한 조건은 README의 문제별 안내, 예시의 산출물·확인 기준, 후속 입력과 결과에 연결합니다. 기존 ID·앵커·가상 입력·정책·숫자는 유지하며, 기존 맥락에 맞지 않으면 별도 예시로 보완합니다. 새 대화의 후속에는 실제 선택안과 조건 판정·근거·미확인 사항을 넘기고 유지/변경 이유를 받습니다. [인계 기준](../.agents/skills/book-to-skill-followup/references/documentation.md#보강한-조건을-예시와-후속으로-연결)과 [대표 연계 시험](../.agents/skills/book-to-skill-followup/references/evaluation.md#예시와-후속의-연계-시험)을 따릅니다.
 
+<a id="doc-section-4"></a>
+
 ## 제작 도구와 배포물 분리
 
 이 후속 스킬은 책 결과물 밖의 제작 작업 공간에서 실행합니다. 책 저장소에 해당 스킬·그 별칭·제작용 프로필을 기본 복사하지 않습니다. 정적 검사는 중첩된 제작 스킬과 프로젝트 설치의 실제 추적·제외 상태를 확인합니다. 이미 추적된 파일은 제외 패턴만 추가해도 배포에서 사라지지 않으므로 승인된 작업 범위에서 정리합니다. 실제 폴더 복사·아카이브에는 별도의 파일 목록 확인이 필요합니다. [배포 분리 계약](../.agents/skills/book-to-skill-followup/references/packaging.md)을 참고하세요.
 
 ---
+
+<a id="doc-section-5"></a>
 
 ## 재개와 무효화
 
@@ -97,6 +121,8 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/run_state.py" revise \
 
 ---
 
+<a id="doc-section-6"></a>
+
 ## 단계 산출물 확인
 
 필수 산출물은 `references/harness-spec.json`이 정본이며, 증거 필드의 자세한 의미는 `references/evidence-contract.md`에 있습니다. 검사기는 다음과 같이 호출합니다.
@@ -113,3 +139,6 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 
 필수 Python 모듈이 없으면 자동 설치하지 않습니다. [문제 해결](troubleshooting.md)에서 차단 기록과 복구 방식을 확인하세요.
 
+---
+
+[↑ 문서 처음](#전체-워크플로) · [가이드 홈](index.md) · [다음 릴리스 노트 작성](../release/_template.md)

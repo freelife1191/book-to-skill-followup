@@ -1,5 +1,19 @@
 # 시작하기
 
+[← 프로젝트 소개](../README.md) · [가이드 홈](index.md) · [릴리스 노트](../release/README.md)
+
+<details open>
+<summary><strong>이 문서의 목차</strong></summary>
+
+- [1. 설치 확인](#doc-section-1)
+- [2. 한 번 호출하기](#doc-section-2)
+- [3. 실행 상태 시작하기](#doc-section-3)
+- [4. 완료 후 읽을 파일](#doc-section-4)
+
+</details>
+
+<a id="doc-section-1"></a>
+
 ## 1. 설치 확인
 
 책 결과물과 분리된 제작 작업 공간에 다음 구조가 있어야 합니다. 결과물 프로젝트에 이 스킬을 설치하는 것이 기본 사용 조건은 아닙니다.
@@ -18,6 +32,8 @@ Claude Code에서 스킬 이름으로 호출하려면 `.claude/skills/book-to-sk
 
 ---
 
+<a id="doc-section-2"></a>
+
 ## 2. 한 번 호출하기
 
 ```text
@@ -35,6 +51,8 @@ $book-to-skill-followup
 > 기존 검증 기록이 있으면 경로를 덧붙이세요. 이전 기록은 단서로 사용하되, 그대로 최종 통과 근거로 재활용하지 않습니다.
 
 ---
+
+<a id="doc-section-3"></a>
 
 ## 3. 실행 상태 시작하기
 
@@ -61,6 +79,8 @@ python3 -B /absolute/path/to/authoring-workspace/.agents/skills/book-to-skill-fo
 
 ---
 
+<a id="doc-section-4"></a>
+
 ## 4. 완료 후 읽을 파일
 
 다른 가이드의 명령 예시에서 쓰는 변수는 실제 설치 경로와 init이 반환한 실행 경로로 설정합니다.
@@ -83,3 +103,6 @@ FOLLOWUP_RUN_DIR='/absolute/path/to/project/_workspace/harness/book-to-skill-fol
 
 배포할 책 폴더에는 대상 지식·필요한 별칭·사용 문서를 담고 제작 도구는 넣지 않습니다. 기존 설치가 있으면 [배포 분리](../.agents/skills/book-to-skill-followup/references/packaging.md)에 따라 실제 추적·제외 상태를 확인합니다.
 
+---
+
+[↑ 문서 처음](#시작하기) · [가이드 홈](index.md) · [다음 릴리스 노트 작성](../release/_template.md)

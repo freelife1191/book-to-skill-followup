@@ -1,5 +1,25 @@
 # 검수와 시험
 
+[← 프로젝트 소개](../README.md) · [가이드 홈](index.md) · [릴리스 노트](../release/README.md)
+
+<details open>
+<summary><strong>이 문서의 목차</strong></summary>
+
+- [증거의 종류](#doc-section-1)
+- [정적 검사](#doc-section-2)
+- [원문 검수 체크리스트](#doc-section-3)
+- [독립 행동 시험 체크리스트](#doc-section-4)
+- [한국어 마지막 검수](#doc-section-5)
+- [최종 호스트 검사](#doc-section-6)
+- [완료 판정](#doc-section-7)
+- [제작 검증 결과](#doc-section-8)
+- [교차 호스트 실제 진입 시험](#doc-section-9)
+- [Claude Code 실제 호출과 어댑터 보완](#doc-section-10)
+
+</details>
+
+<a id="doc-section-1"></a>
+
 ## 증거의 종류
 
 실행 기록에서는 증거를 다음처럼 구분합니다.
@@ -15,6 +35,8 @@
 초기 실패 기록은 보존합니다. 최종 기록은 실패가 있었던 사실과 어떤 종류의 재검증을 거쳤는지 함께 적습니다.
 
 ---
+
+<a id="doc-section-2"></a>
 
 ## 정적 검사
 
@@ -37,6 +59,8 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 목차·장별 프롬프트 바로가기는 표시 텍스트도 별도로 검토합니다. 예시와 후속 요청의 실제 제목이 드러나는지, 목적지 제목과 일치하는지, 긴 제목이 목록·표에서 읽기 쉽게 배치됐는지 확인합니다. 이 검토를 링크·앵커 자동 검사의 결과로 대신하지 않습니다. 구체적인 기준은 [프롬프트 제목과 바로가기](../.agents/skills/book-to-skill-followup/references/documentation.md#프롬프트-제목과-바로가기)를 참고합니다.
 
 ---
+
+<a id="doc-section-3"></a>
 
 ## 원문 검수 체크리스트
 
@@ -64,6 +88,8 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 
 ---
 
+<a id="doc-section-4"></a>
+
 ## 독립 행동 시험 체크리스트
 
 - [ ] 자료 선택·개념 확인, 실제 적용, 모순·미정 검토의 대표 사례 3개가 있다.
@@ -82,6 +108,8 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 
 ---
 
+<a id="doc-section-5"></a>
+
 ## 한국어 마지막 검수
 
 `improvement` 뒤 `freeze` 전에 vendored DaleSeo/korean-skills의 `humanizer → grammar-checker → style-guide`를 이 순서로 실제 읽어 적용합니다. 현재 subject의 Markdown·JSON·YAML을 빠짐없이 path/SHA-256으로 기록하고, 어색한 문장·맞춤법·띄어쓰기·문법·구두점·용어와 문서 스타일을 문맥으로 검토합니다. 단순 파일 존재나 자동 정규식만으로 이 검수를 통과로 표시하지 않습니다.
@@ -93,6 +121,8 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 보정이 필요하면 `freeze` 전 `revise --from-stage documentation`으로 관련 정적·행동 시험을 stale로 만든 뒤 새 증거로 다시 진행합니다. `freeze` 뒤에는 새 run을 시작합니다.
 
 ---
+
+<a id="doc-section-6"></a>
 
 ## 최종 호스트 검사
 
@@ -121,6 +151,8 @@ Claude Code에서는 `claude --version`을 사용합니다. Antigravity는 실�
 
 ---
 
+<a id="doc-section-7"></a>
+
 ## 완료 판정
 
 다음 모두 충족할 때만 완료입니다.
@@ -134,6 +166,8 @@ Claude Code에서는 `claude --version`을 사용합니다. Antigravity는 실�
 필수 조건이 빠지면 완료라고 표현하지 않고 차단된 단계와 다음에 필요한 조건을 기록합니다.
 
 ---
+
+<a id="doc-section-8"></a>
 
 ## 제작 검증 결과
 
@@ -171,6 +205,8 @@ Claude Code에서는 `claude --version`을 사용합니다. Antigravity는 실�
 
 ---
 
+<a id="doc-section-9"></a>
+
 ## 교차 호스트 실제 진입 시험
 
 같은 2026-10-12에 별도 프로젝트와 실행 ID로 **후속 스킬 자체**를 실제 호출했습니다. 범위는 읽기 전용 입력·원문 대응·예비 내용 검토이며, 상태 파일 작성·보완 편집·독립 하위 에이전트·최종 지식 스킬 호출을 포함한 전체 FLOW를 다시 수행한 시험은 아닙니다.
@@ -201,8 +237,9 @@ Antigravity는 서로 다른 프로젝트·conversation에서 총 4회 호출했
 
 GUI·전체 Claude/Antigravity FLOW·Antigravity 역할 프로필의 실제 선택/독립 실행·모든 책과 요청 조합은 미검증입니다. 전체 FLOW 필수 게이트는 이 제한된 시험의 통과로 대체할 수 없습니다.
 
-
 ---
+
+<a id="doc-section-10"></a>
 
 ## Claude Code 실제 호출과 어댑터 보완
 
@@ -236,3 +273,7 @@ GUI·전체 Claude/Antigravity FLOW·Antigravity 역할 프로필의 실제 선�
 ### 한계
 
 Claude Code 2.1.296 한 버전의 이벤트 형식으로 확인했습니다. 형식이 바뀌면 결속은 실패 쪽으로 남으며, 이를 성공으로 바꾸는 우회는 하지 않습니다. 대화형 세션의 slash 확장, GUI, 다른 모델은 시험하지 않았습니다. 원시 로그·재생 결과·record는 로컬 `_workspace/claude-lessons/2026-10-14/`(`claude-adapter-probe*/`, `replay-results.txt`, `real-host-smoke-2/`)에 보존하고 배포 자료에서 제외합니다. 이번 지침 보완은 매매 책 한 권의 검토에서 나왔고 게임 기획 책 한 권에서 다시 확인했습니다. 다른 책으로 후속 FLOW 전체를 다시 수행한 검증은 아닙니다. 다른 책 확인 기록은 `other-book-cli/`와 `iteration-2/`에 있습니다.
+
+---
+
+[↑ 문서 처음](#검수와-시험) · [가이드 홈](index.md) · [다음 릴리스 노트 작성](../release/_template.md)

@@ -1,4 +1,30 @@
-# 책 지식 스킬 후속 완성 <a id="document-top"></a>
+<a id="document-top"></a>
+<a id="책-지식-스킬-후속-완성"></a>
+
+<p align="center">
+  <a href="docs/index.md"><img src="docs/assets/banner.svg" alt="책 지식 스킬 후속 완성 — 원문 대조부터 문서와 독립 검증까지" width="840"></a>
+</p>
+
+<h1 align="center">책 지식 스킬 후속 완성</h1>
+
+<p align="center"><strong>book-to-skill-followup</strong><br>변환한 지식 스킬을 검수하고, 사용 문서와 실행 증거를 연결합니다.</p>
+
+<p align="center">
+  <a href="https://github.com/freelife1191/book-to-skill-followup/releases"><img src="https://img.shields.io/badge/GitHub-Releases-153b35?style=flat-square" alt="GitHub Releases"></a>
+  <a href=".agents/skills/book-to-skill-followup/SKILL.md"><img src="https://img.shields.io/badge/skill-book--to--skill--followup-153b35?style=flat-square" alt="스킬 실행 지침"></a>
+  <a href="docs/agents.md"><img src="https://img.shields.io/badge/hosts-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Antigravity-153b35?style=flat-square" alt="호스트별 사용 안내"></a>
+</p>
+
+<p align="center">
+  <a href="#installation">설치</a> &middot;
+  <a href="#quick-start">빠른 시작</a> &middot;
+  <a href="#flow">작업 흐름</a> &middot;
+  <a href="#verification-limits">검증 범위</a> &middot;
+  <a href="docs/index.md">문서 지도</a> &middot;
+  <a href="release/README.md">릴리스 노트</a>
+</p>
+
+---
 
 `book-to-skill`로 변환한 지식 스킬을 **원문 대조부터 레퍼런스·문서·독립 시험·최종 호스트 검사까지** 마무리하는 후속 작업 스킬입니다. 변환기를 다시 만들지 않으며, 이미 생성된 스킬을 더 정확하고 사용하기 쉬운 결과물로 완성합니다.
 
@@ -32,6 +58,9 @@ Claude 별칭도 연결해줘. 생성된 책 저장소에는 이 제작 도구�
 
 ### CLI로 수동 설치
 
+<details>
+<summary><strong>수동 설치 명령 펼치기</strong></summary>
+
 다음 명령은 스킬 폴더 전체를 현재 제작 작업 공간으로 복사하고 Claude Code용 별칭을 만듭니다. 책 결과물 프로젝트에서 실행하지 않습니다. 대상 스킬이나 별칭이 이미 있으면 **복사 전에 중단**합니다.
 
 ```bash
@@ -50,6 +79,8 @@ cp -R "$SKILL_SOURCE" "$SKILL_TARGET"
 ln -s '../../.agents/skills/book-to-skill-followup' "$CLAUDE_TARGET"
 ```
 
+</details>
+
 Antigravity는 프로젝트의 `.agents/skills/`를 그대로 사용합니다. 선택 역할 프로필을 함께 쓰려면 [에이전트와 호스트](docs/agents.md)를 따릅니다.
 
 > [!NOTE]
@@ -57,7 +88,7 @@ Antigravity는 프로젝트의 `.agents/skills/`를 그대로 사용합니다. �
 
 ---
 
-## TOC <a id="toc"></a>
+## 목차 <a id="toc"></a>
 
 - [설치](#installation)
 - [한 번에 사용하기](#quick-start)
@@ -66,6 +97,7 @@ Antigravity는 프로젝트의 `.agents/skills/`를 그대로 사용합니다. �
 - [역할](#roles)
 - [검증 범위와 한계](#verification-limits)
 - [상세 가이드](#guides)
+- [릴리스와 업데이트](#release-notes)
 
 ### 상세 가이드
 
@@ -134,6 +166,13 @@ $book-to-skill-followup
 | 8 | 한국어 마지막 검수 | 세 vendored 스킬 순서, 전체 대상 파일, 의미 보존을 독립 기록으로 확인 |
 | 9–10 | 최종 고정, 실제 호스트 호출 | 고정 해시와 실행 증거가 일치 |
 
+```mermaid
+flowchart LR
+  A["입력 고정"] --> B["원문 대조"] --> C["스킬·문서 보완"]
+  C --> D["정적 검사·독립 시험"] --> E["한국어 검수"]
+  E --> F["고정·호스트 호출"] --> G["최종 판정"]
+```
+
 전체 단계와 재개·무효화 규칙은 [전체 워크플로](docs/workflow.md)에 있습니다.
 
 ---
@@ -185,3 +224,19 @@ $book-to-skill-followup
 | [문제 해결](docs/troubleshooting.md) | 입력·도구·검사·호스트 단계가 막혔을 때 |
 | [이력과 설계 근거](docs/history.md) | 이 흐름이 해결하려는 과거 실패 유형을 확인할 때 |
 
+---
+
+<a id="release-notes"></a>
+
+## 릴리스와 업데이트
+
+문서 변경 이력은 `release/yyyy-mm-dd-title.md`로 관리합니다. 작성일과 변경 주제로 노트를 찾고, 배포할 버전의 본문을 GitHub Release에 그대로 사용할 수 있습니다.
+
+| 필요한 작업 | 바로가기 |
+|---|---|
+| 파일 이름·작성·GitHub Release 등록 방법 | [릴리스 가이드](release/README.md) |
+| 이번 문서 정돈 내용과 검증 범위 | [2026-10-15 · 문서와 릴리스 가이드](release/2026-10-15-documentation-and-release-guide.md) |
+| 다음 릴리스 노트 작성 | [노트 템플릿](release/_template.md) |
+
+> [!NOTE]
+> 노트 파일의 커밋·푸시와 GitHub Release의 공개는 별도 작업입니다. 이 변경은 릴리스 노트를 연결할 구조를 준비합니다.

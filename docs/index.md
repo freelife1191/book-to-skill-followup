@@ -1,5 +1,7 @@
 # 책 지식 스킬 후속 완성 가이드
 
+[← 프로젝트 소개](../README.md) · [가이드 홈](index.md) · [릴리스 노트](../release/README.md)
+
 이 가이드는 변환된 책·문서 기반 스킬을 실제로 배포 가능한 상태로 완성하는 절차를 설명합니다. 스킬의 명령문은 `.agents/skills/book-to-skill-followup/SKILL.md`에 있고, 이 문서는 설치 후 운영할 때 필요한 세부 기준을 제공합니다.
 
 ---
@@ -15,6 +17,9 @@
 | 원문 대조·독립 평가·증거 판정 | [검수와 시험](validation.md) |
 | 막힌 단계의 안전한 복구 | [문제 해결](troubleshooting.md) |
 | 설계에 반영한 검증 이력 | [이력과 설계 근거](history.md) |
+| 릴리스 노트 규칙과 GitHub Release 등록 | [릴리스 가이드](../release/README.md) |
+| 이번 문서 변경 내역 | [2026-10-15 노트](../release/2026-10-15-documentation-and-release-guide.md) |
+| 다음 변경 내역 작성 | [노트 템플릿](../release/_template.md) |
 
 > [!NOTE]
 > 상세 가이드는 스킬 본문을 복제하지 않습니다. 호출 중에는 필요한 참조만 읽고, 실제 명령과 산출물 계약은 스킬의 `references/`를 우선합니다.
@@ -30,3 +35,6 @@
 
 네 항목을 만족하면 [시작하기](getting-started.md)로 진행합니다. 만족하지 못하는 항목은 억지로 보완하지 않고 실행 기록에 차단 사유로 남깁니다.
 
+---
+
+[↑ 문서 처음](#책-지식-스킬-후속-완성-가이드) · [가이드 홈](index.md) · [다음 릴리스 노트 작성](../release/_template.md)

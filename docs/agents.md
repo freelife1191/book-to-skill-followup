@@ -1,11 +1,26 @@
 # 에이전트와 호스트
 
+[← 프로젝트 소개](../README.md) · [가이드 홈](index.md) · [릴리스 노트](../release/README.md)
+
+<details open>
+<summary><strong>이 문서의 목차</strong></summary>
+
+- [역할 계약](#doc-section-1)
+- [Codex](#doc-section-2)
+- [Claude Code](#doc-section-3)
+- [Antigravity](#doc-section-4)
+- [지원과 실행 검증의 차이](#doc-section-5)
+
+</details>
+
 > [!NOTE]
 > 실제 호출 어댑터는 Codex와 Claude Code에 제공됩니다. Antigravity는 읽기 격리가 확인되는 네이티브 실행의 원래 로그를 검증하는 방식이며 자동 AGY CLI 호출은 지원하지 않습니다. 지원 형식과 실제 시험 결과는 구분합니다.
 
 Antigravity의 준비 → 호출 선점 → 실제 네이티브 호출 → 로그 검증 명령은 [호스트 연동 계약](../.agents/skills/book-to-skill-followup/references/host-adapters.md#antigravity-네이티브-실행-로그)에 있습니다.
 
 후속 스킬 자체의 발견·확장을 시험하는 방법은 [진입 시험 계약](../.agents/skills/book-to-skill-followup/references/host-adapters.md#후속-스킬-자체의-진입-시험)을 따릅니다. 최종 지식 스킬의 호출 검사와 별도 실행으로 기록합니다.
+
+<a id="doc-section-1"></a>
 
 ## 역할 계약
 
@@ -26,6 +41,8 @@ Antigravity의 준비 → 호출 선점 → 실제 네이티브 호출 → 로�
 
 ---
 
+<a id="doc-section-2"></a>
+
 ## Codex
 
 선택 프로필은 `.codex/agents/book-followup-*.toml`에 둡니다. Codex의 기본 모델·승인·샌드박스 설정은 사용자의 환경 설정을 그대로 따릅니다.
@@ -33,6 +50,8 @@ Antigravity의 준비 → 호출 선점 → 실제 네이티브 호출 → 로�
 최종 단계에서는 사용 중인 Codex 호스트에서 고정된 패키지를 한 번만 실제 호출합니다. 호출 전후 해시, 실행 인자, 종료 상태, 읽은 자료 또는 도구 로그를 실행 기록에 보관합니다.
 
 ---
+
+<a id="doc-section-3"></a>
 
 ## Claude Code
 
@@ -49,6 +68,8 @@ Claude Code의 에이전트 형식과 스킬 동작은 [Claude Code 하위 에�
 
 ---
 
+<a id="doc-section-4"></a>
+
 ## Antigravity
 
 선택 프로필은 `.agents/agents/book-followup-*.md`에 둡니다. Antigravity는 프로젝트의 `.agents/skills/` 스킬을 사용하므로 별도 전역 설치를 하지 않습니다.
@@ -61,6 +82,8 @@ AGY CLI 1.3.3에서 `/book-to-skill-followup`을 실제 확장하고, 원문·�
 > plan과 sandbox는 모든 도구를 읽기 전용으로 만드는 옵션이 아닙니다. 이번 직접 호출은 실제 도구 로그와 입력 파일의 변경 여부로 수행 범위를 확인합니다. MCP 격리 보장이 없는 자동 AGY 호출은 계속 차단합니다.
 
 ---
+
+<a id="doc-section-5"></a>
 
 ## 지원과 실행 검증의 차이
 
@@ -77,3 +100,6 @@ AGY CLI 1.3.3에서 `/book-to-skill-followup`을 실제 확장하고, 원문·�
 
 역할 프로필은 선택 사항입니다. 프로필을 복사할 때도 기존 동일 이름 파일이 있으면 덮어쓰지 말고, 전역 설정을 자동 수정하지 않습니다.
 
+---
+
+[↑ 문서 처음](#에이전트와-호스트) · [가이드 홈](index.md) · [다음 릴리스 노트 작성](../release/_template.md)

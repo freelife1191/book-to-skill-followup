@@ -1,5 +1,22 @@
 # 고급 활용
 
+[← 프로젝트 소개](../README.md) · [가이드 홈](index.md) · [릴리스 노트](../release/README.md)
+
+<details open>
+<summary><strong>이 문서의 목차</strong></summary>
+
+- [기존 검증 기록으로 시작하기](#doc-section-1)
+- [여러 문서가 있는 프로젝트](#doc-section-2)
+- [출처 귀속 오류를 회귀 사례로 만들기](#doc-section-3)
+- [확정 정책과 미정 정책을 분리한 QA](#doc-section-4)
+- [독립 행동 시험 설계](#doc-section-5)
+- [보강한 조건을 예시와 새 대화의 후속에 연결하기](#doc-section-6)
+- [제작 도구 없이 책 지식만 배포하기](#doc-section-7)
+
+</details>
+
+<a id="doc-section-1"></a>
+
 ## 기존 검증 기록으로 시작하기
 
 이전 실행 기록은 문제 후보와 회귀 사례의 출발점입니다. 이전의 “통과”를 이번 실행의 최종 통과로 그대로 사용하지 않습니다.
@@ -22,6 +39,8 @@ $book-to-skill-followup
 
 ---
 
+<a id="doc-section-2"></a>
+
 ## 여러 문서가 있는 프로젝트
 
 프로젝트에 여러 스킬이 있어도 대상 스킬 하나만 선택합니다. 루트 README가 여러 스킬을 설명하면 기존 내용을 덮어쓰지 않고 대상 스킬의 상세 문서를 `docs/` 아래에 추가합니다.
@@ -39,6 +58,8 @@ economy-design의 설치·빠른 사용·고급 가이드는 docs/economy-design
 **검토 기준:** 링크·앵커 검사와 변경 전후 파일 목록 비교로 범위를 확인합니다.
 
 ---
+
+<a id="doc-section-3"></a>
 
 ## 출처 귀속 오류를 회귀 사례로 만들기
 
@@ -58,6 +79,8 @@ economy-design의 설치·빠른 사용·고급 가이드는 docs/economy-design
 
 ---
 
+<a id="doc-section-4"></a>
+
 ## 확정 정책과 미정 정책을 분리한 QA
 
 ```text
@@ -75,6 +98,8 @@ economy-design의 설치·빠른 사용·고급 가이드는 docs/economy-design
 
 ---
 
+<a id="doc-section-5"></a>
+
 ## 독립 행동 시험 설계
 
 대표 시험은 세 유형을 포함합니다.
@@ -91,6 +116,8 @@ economy-design의 설치·빠른 사용·고급 가이드는 docs/economy-design
 > 행동 시험이 실패한 경우에만 필요한 문서·스킬 문장을 최소 수정합니다. 예시 개수를 늘리거나 일반 규칙을 누적하는 방식으로 실패를 가리지 않습니다.
 
 ---
+
+<a id="doc-section-6"></a>
 
 ## 보강한 조건을 예시와 새 대화의 후속에 연결하기
 
@@ -116,6 +143,8 @@ README의 문제별 안내와 예시의 산출물·확인 기준에 조건을 �
 
 ---
 
+<a id="doc-section-7"></a>
+
 ## 제작 도구 없이 책 지식만 배포하기
 
 ```text
@@ -131,3 +160,6 @@ $book-to-skill-followup [책 프로젝트·스킬·원문 경로]의 전체 후�
 
 **검토 기준:** `.gitignore`만 추가하고 이미 추적된 파일이 빠졌다고 보고하지 않습니다. 원본 도구 자체의 설치·검사와 책 결과물 검사를 구분합니다. 임의의 아카이브가 Git 제외 패턴을 따른다고 가정하지 않습니다.
 
+---
+
+[↑ 문서 처음](#고급-활용) · [가이드 홈](index.md) · [다음 릴리스 노트 작성](../release/_template.md)
