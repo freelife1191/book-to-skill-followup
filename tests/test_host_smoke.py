@@ -4,6 +4,7 @@ import stat
 import sys
 import tempfile
 import unittest
+import hashlib
 from argparse import Namespace
 from pathlib import Path
 
@@ -37,13 +38,23 @@ def executable(tmp_path: Path, body: str) -> str:
     return str(path)
 
 
+def completed_command(command: str, output: str, exit_code: int = 0, status: str = "completed") -> dict:
+    return {"type": "item.completed", "item": {"type": "command_execution", "exit_code": exit_code,
+            "status": status, "command": command, "aggregated_output": output}}
+
+
 def test_mock_host_requires_trace_and_consumes_one_attempt(tmp_path):
     run = prepare_run(tmp_path)
-    fake = executable(tmp_path, "import json, sys\nsys.stdin.read()\nprint(json.dumps([{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'command':\"/bin/zsh -lc 'cat .agents/skills/demo/SKILL.md'\"}},{'type':'turn.completed'}]))\n")
+    fake = executable(tmp_path, "import json, sys\nsys.stdin.read()\ntext=open('.agents/skills/demo/SKILL.md', encoding='utf-8').read()\nprint(json.dumps([{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'status':'completed','command':\"/bin/zsh -lc 'cat .agents/skills/demo/SKILL.md'\",'aggregated_output':text}},{'type':'item.completed','item':{'id':'answer-1','type':'agent_message','text':'최종 답변'}},{'type':'turn.completed'}]))\n")
     record = host_smoke.run(run, "prompt.txt", 3, fake)
     assert record["verdict"] == "pass"
     assert record["loaded"] is True and record["turn_completed"] is True
     assert record["proof_files"]
+    assert record["answer_file"] == "host/answer.txt"
+    assert record["answer_sha256"] == hashlib.sha256("최종 답변".encode()).hexdigest()
+    assert record["answer_event_id"] == "answer-1"
+    assert record["answer_sha256"] != record["raw_trace_sha256"]
+    assert (run / record["answer_file"]).read_text(encoding="utf-8") == "최종 답변"
     assert not (run / "SHOULD_NOT_EXIST").exists()
     evidence = host_smoke.write_record(run, record)
     evidence_hash = sha256_file(evidence)
@@ -87,7 +98,7 @@ class HostSmokeTests(unittest.TestCase):
                 state["freeze_snapshot"] = package_snapshot(state)
                 state["subject"] = package_snapshot(state)
             mutate_state(run, freeze_for_host)
-            fake = executable(root, "import json, sys\nsys.stdin.read()\nprint(json.dumps([{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'command':\"/bin/zsh -lc 'cat .agents/skills/demo/SKILL.md'\"}},{'type':'turn.completed'}]))\n")
+            fake = executable(root, "import json, sys\nsys.stdin.read()\ntext=open('.agents/skills/demo/SKILL.md', encoding='utf-8').read()\nprint(json.dumps([{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'status':'completed','command':\"/bin/zsh -lc 'cat .agents/skills/demo/SKILL.md'\",'aggregated_output':text}},{'type':'item.completed','item':{'id':'answer-1','type':'agent_message','text':'최종 답변'}},{'type':'turn.completed'}]))\n")
             evidence = host_smoke.run(run, "prompt.txt", 3, fake)
             self.assertEqual(evidence["verdict"], "pass")
             host_smoke.write_record(run, evidence)
@@ -111,12 +122,81 @@ class HostSmokeTests(unittest.TestCase):
             source = project / ".agents" / "skills" / "demo" / "SKILL.md"
             source.parent.mkdir(parents=True)
             source.write_text("skill", encoding="utf-8")
-            events = [{"type": "item.completed", "item": {"type": "command_execution", "exit_code": 0,
-                       "command": "/bin/zsh -lc 'cat .agents/skills/demo/SKILL.md'"}}]
+            events = [completed_command("/bin/zsh -lc 'cat .agents/skills/demo/SKILL.md'", "skill")]
             self.assertEqual(host_smoke.codex_read_paths(events, project), {str(source.resolve())})
-            unsafe = [{"item": {"type": "command_execution", "exit_code": 0,
-                       "command": "cat .agents/skills/demo/SKILL.md; touch x"}}]
+            unsafe = [completed_command("cat .agents/skills/demo/SKILL.md; touch x", "skill")]
             self.assertEqual(host_smoke.codex_read_paths(unsafe, project), set())
+
+    def test_codex_cat_bundle_requires_exact_output_and_safe_syntax(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            source = project / ".agents" / "skills" / "demo"
+            source.mkdir(parents=True)
+            first = source / "first.md"; first.write_text("first\n", encoding="utf-8")
+            second = source / "with space;semi.md"; second.write_text("second\n", encoding="utf-8")
+            output = first.read_text(encoding="utf-8") + second.read_text(encoding="utf-8")
+            command = "/bin/zsh -lc \"cat .agents/skills/demo/first.md; cat '.agents/skills/demo/with space;semi.md'\""
+            self.assertEqual(host_smoke.codex_read_paths([completed_command(command, output)], project),
+                             {str(first.resolve()), str(second.resolve())})
+            self.assertEqual(host_smoke.codex_read_paths([completed_command("cat .agents/skills/demo/first.md", "first\n")], project),
+                             {str(first.resolve())})
+
+            crlf = source / "crlf.md"; crlf.write_bytes(b"crlf\r\n")
+            self.assertEqual(host_smoke.codex_read_paths([completed_command("cat .agents/skills/demo/crlf.md", "crlf\r\n")], project),
+                             {str(crlf.resolve())})
+            binary = source / "binary.md"; binary.write_bytes(b"\xff")
+            self.assertEqual(host_smoke.codex_read_paths([completed_command("cat .agents/skills/demo/binary.md", "")], project), set())
+
+            outside = project.parent / "outside.md"; outside.write_text("outside\n", encoding="utf-8")
+            link = source / "outside-link.md"; link.symlink_to(outside)
+            external_then_project = f"cat {outside}; cat .agents/skills/demo/first.md"
+            self.assertEqual(host_smoke.codex_read_paths([completed_command(external_then_project, "outside\nfirst\n")], project),
+                             {str(first.resolve())})
+            unsafe = [
+                completed_command(command, "wrong\n"),
+                completed_command("cat .agents/skills/demo/first.md | cat .agents/skills/demo/with\\ space\\;semi.md", output),
+                completed_command("cat .agents/skills/demo/first.md && cat .agents/skills/demo/with\\ space\\;semi.md", output),
+                completed_command("cat .agents/skills/demo/first.md || cat .agents/skills/demo/with\\ space\\;semi.md", output),
+                completed_command("cat $(printf .agents/skills/demo/first.md)", "first\n"),
+                completed_command("cat .agents/skills/demo/first.md > saved.md", ""),
+                completed_command("cat .agents/skills/demo/first.md\ncat .agents/skills/demo/with\\ space\\;semi.md", output),
+                completed_command("cd ..; cat .agents/skills/demo/first.md", "first\n"),
+                completed_command("touch wrote.md", ""),
+                completed_command("printf '%s' .agents/skills/demo/first.md", "first\n"),
+                completed_command("cat .agents/skills/demo/outside-link.md", "outside\n"),
+                completed_command("cat .agents/skills/demo/first.md", "first\n", exit_code=1),
+                completed_command("cat .agents/skills/demo/first.md", "first\n", exit_code=False),
+                completed_command("cat .agents/skills/demo/first.md", "first\n", status="failed"),
+                {"type": "item.started", "item": completed_command("cat .agents/skills/demo/first.md", "first\n")["item"]},
+            ]
+            for event in unsafe:
+                with self.subTest(command=event.get("item", {}).get("command")):
+                    self.assertEqual(host_smoke.codex_read_paths([event], project), set())
+
+    def test_codex_simple_sed_head_and_rg_contract_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            source = project / ".agents" / "skills" / "demo" / "SKILL.md"
+            source.parent.mkdir(parents=True)
+            source.write_text("needle\n", encoding="utf-8")
+            expected = {str(source.resolve())}
+            for command in ("sed -n '1p' .agents/skills/demo/SKILL.md", "head -n 1 .agents/skills/demo/SKILL.md",
+                            "rg needle .agents/skills/demo/SKILL.md"):
+                with self.subTest(command=command):
+                    self.assertEqual(host_smoke.codex_read_paths([completed_command(command, "")], project), expected)
+            aggregate_success = completed_command("grep '[' .agents/skills/demo/SKILL.md; head -n 1 .agents/skills/demo/SKILL.md", "needle\n")
+            self.assertEqual(host_smoke.codex_read_paths([aggregate_success], project), set())
+
+    def test_host_blocks_when_final_assistant_answer_is_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare_run(Path(directory))
+            fake = executable(Path(directory), "import json, sys\nsys.stdin.read()\ntext=open('.agents/skills/demo/SKILL.md', encoding='utf-8').read()\nprint(json.dumps([{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'status':'completed','command':\"cat .agents/skills/demo/SKILL.md\",'aggregated_output':text}},{'type':'turn.completed'}]))\n")
+            record = host_smoke.run(run, "prompt.txt", 3, fake)
+            self.assertEqual(record["verdict"], "blocked")
+            self.assertIsNone(record["answer_file"])
+            self.assertIsNone(record["answer_sha256"])
+            self.assertIsNone(record["answer_event_id"])
+            self.assertEqual(record["errors"][-1]["code"], "answer-unavailable")
 
     def test_claude_profile_and_trace_bind_a_successful_read(self):
         command, adapter = host_smoke.host_command("claude", Path("/tmp/isolated"), None)
@@ -136,11 +216,13 @@ class HostSmokeTests(unittest.TestCase):
             self.assertEqual(host_smoke.prepare(run, "prompt.txt")["verdict"], "pass")
             claim_host(run)
             trace = [{"tool_use": {"id": "view-1", "name": "view_file", "input": {"path": str((run / "host" / "project" / ".agents" / "skills" / "demo" / "SKILL.md").resolve())}}},
-                     {"tool_result": {"tool_use_id": "view-1", "is_error": False}}, {"type": "result", "is_error": False}]
+                     {"tool_result": {"tool_use_id": "view-1", "is_error": False}},
+                     {"type": "result", "id": "legacy-result", "is_error": False, "result": "최종 답변"}]
             (run / "trace.json").write_text(json.dumps(trace), encoding="utf-8")
             record = host_smoke.run(run, "prompt.txt", 3, None, "trace.json")
             self.assertEqual(record["verdict"], "pass")
             self.assertTrue(record["loaded"])
+            self.assertEqual(record["answer_event_id"], "legacy-result")
 
     def test_antigravity_native_stream_binds_done_to_active_and_success_result(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -160,6 +242,7 @@ class HostSmokeTests(unittest.TestCase):
             record = host_smoke.run(run, "prompt.txt", 3, None, "native.jsonl")
             self.assertEqual(record["verdict"], "pass")
             self.assertTrue(record["turn_completed"])
+            self.assertEqual(record["answer_event_id"], "native-conversation")
             self.assertEqual(host_smoke.agy_read_paths(events), {str(source.resolve())})
             self.assertEqual(host_smoke.agy_read_paths([events[0], events[2], events[3]]), set())
             done["tool_info"]["error"] = {"type": "PERMISSION_DENIED", "message": "denied"}
@@ -167,6 +250,25 @@ class HostSmokeTests(unittest.TestCase):
             self.assertFalse(any(x["type"] == "turn.completed" for x in host_smoke.normalized_events("antigravity", events[:-1], source.parents[3])))
             events[-1]["result"]["status"] = "ERROR"
             self.assertFalse(any(x["type"] == "turn.completed" for x in host_smoke.normalized_events("antigravity", events, source.parents[3])))
+
+    def test_final_answer_requires_host_specific_terminal_evidence(self):
+        claude = [{"type": "result", "uuid": "claude-result", "is_error": False, "result": "Claude 답변"}]
+        self.assertEqual(host_smoke.final_answer(claude, "claude"), ("Claude 답변", "claude-result"))
+        session_bound = [{"type": "result", "session_id": "claude-session", "is_error": False, "result": "세션 답변"}]
+        self.assertEqual(host_smoke.final_answer(session_bound, "claude"), ("세션 답변", "claude-session"))
+        self.assertIsNone(host_smoke.final_answer([{"type": "result", "uuid": "bad", "is_error": False}], "claude"))
+        legacy_agy = [{"type": "result", "id": "agy-result", "is_error": False, "result": "AGY 답변"}]
+        self.assertEqual(host_smoke.final_answer(legacy_agy, "antigravity"), ("AGY 답변", "agy-result"))
+        self.assertIsNone(host_smoke.final_answer([{"type": "result", "is_error": False, "result": "무결속"}], "antigravity"))
+
+    def test_claude_mock_host_binds_final_result_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = prepare_run(Path(directory), "claude")
+            fake = executable(Path(directory), "import json, os, sys\nsys.stdin.read()\npath=os.path.abspath('.agents/skills/demo/SKILL.md')\nprint(json.dumps([{'type':'assistant','message':{'content':[{'type':'tool_use','id':'read-1','name':'Read','input':{'file_path':path}}]}},{'type':'user','message':{'content':[{'type':'tool_result','tool_use_id':'read-1','is_error':False,'content':'skill'}]}},{'type':'result','uuid':'claude-result','is_error':False,'result':'Claude 최종 답변'}]))\n")
+            record = host_smoke.run(run, "prompt.txt", 3, fake)
+            self.assertEqual(record["verdict"], "pass")
+            self.assertEqual(record["answer_event_id"], "claude-result")
+            self.assertEqual((run / record["answer_file"]).read_text(encoding="utf-8"), "Claude 최종 답변")
 
     def test_antigravity_native_stream_rejects_cross_conversation_and_changed_path(self):
         started = {"conversation_id": "main", "step_index": 1, "state": "ACTIVE", "step_type": "tool",

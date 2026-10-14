@@ -71,6 +71,11 @@
       "required": true
     },
     {
+      "id": "language-review",
+      "path": "_workspace/harness/book-to-skill-followup/{run_id}/release-reviewer/language-review.json",
+      "required": true
+    },
+    {
       "id": "freeze",
       "path": "_workspace/harness/book-to-skill-followup/{run_id}/release-reviewer/freeze.json",
       "required": true
@@ -291,7 +296,7 @@
       "required": true
     },
     {
-      "id": "freeze",
+      "id": "language-review",
       "owner": "release-reviewer",
       "depends_on": [
         "improvement"
@@ -300,6 +305,24 @@
         "request",
         "source",
         "improvement"
+      ],
+      "outputs": [
+        "language-review"
+      ],
+      "parallel_group": null,
+      "completion": "DaleSeo/korean-skills의 humanizer → grammar-checker → style-guide를 실제 읽고, 현재 한국어 Markdown·JSON·YAML 전체와 의미 보존 6개 항목을 독립 판정한 증거를 기록한다.",
+      "required": true
+    },
+    {
+      "id": "freeze",
+      "owner": "release-reviewer",
+      "depends_on": [
+        "language-review"
+      ],
+      "inputs": [
+        "request",
+        "source",
+        "language-review"
       ],
       "outputs": [
         "freeze"
@@ -338,6 +361,7 @@
         "static-checks",
         "behavior-tests",
         "improvement",
+        "language-review",
         "freeze",
         "host-smoke"
       ],
@@ -350,6 +374,7 @@
         "static-checks",
         "behavior-tests",
         "improvement",
+        "language-review",
         "freeze",
         "host-smoke"
       ],

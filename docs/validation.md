@@ -20,6 +20,8 @@
 
 `check_package.py`는 대상 프로젝트의 파일 구조, 링크·앵커, 해시·경로, 문서와 역할 프로필의 배치를 검사합니다. **Python 3.11 이상**, `PyYAML`, `markdown-it-py`가 필요합니다. 이 프로젝트를 제작·검수한 현재 환경에는 두 파서가 있었지만, 대상 실행 환경까지 보장하지는 않습니다. 필요한 도구가 없으면 자동으로 설치하지 않고 `blocked`를 기록합니다.
 
+생성된 책 대상에서는 `book-to-skill-followup` 제작 스킬과 별칭의 혼입도 검사합니다. 대상 지식 안의 복사본은 실패하며, 프로젝트의 로컬 설치는 Git index와 명시적 제외 상태를 구분합니다. 원본 도구 자체를 검사하는 경우와 과거 문서의 단순 이름 언급은 혼입으로 취급하지 않습니다. 실제 아카이브·전역 설치 전체까지 검사하는 것은 아닙니다. [배포 분리와 검사 범위](../.agents/skills/book-to-skill-followup/references/packaging.md)를 참고하세요.
+
 ```bash
 python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
   --project /absolute/path/to/project \
@@ -32,14 +34,20 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 
 정적 통과는 링크와 구조가 현재 검사 범위에서 유효하다는 뜻입니다. Markdown 알림 블록의 실제 UI 렌더링, 원문 해석의 정확성, 호스트에서의 스킬 선택은 별도 검사 대상입니다.
 
+목차·장별 프롬프트 바로가기는 표시 텍스트도 별도로 검토합니다. 예시와 후속 요청의 실제 제목이 드러나는지, 목적지 제목과 일치하는지, 긴 제목이 목록·표에서 읽기 쉽게 배치됐는지 확인합니다. 이 검토를 링크·앵커 자동 검사의 결과로 대신하지 않습니다. 구체적인 기준은 [프롬프트 제목과 바로가기](../.agents/skills/book-to-skill-followup/references/documentation.md#프롬프트-제목과-바로가기)를 참고합니다.
+
 ---
 
 ## 원문 검수 체크리스트
 
 - [ ] 모든 장·주제에 스킬 반영 위치 또는 누락 사유가 있다.
+- [ ] 세부 기법·성립 조건·예외·대조 사례를 실제 대응 문장과 비교했다.
+- [ ] 제목·링크·claim 개수만으로 내용 충실도를 통과시키지 않았다.
 - [ ] 직접 설명, 재구성, 검증 기반 적용 지침, 새 프로젝트 제안을 구분했다.
 - [ ] 책의 사례값을 기본 정책으로 고정하지 않았다.
 - [ ] 미정·모순은 위치·영향·결정 질문으로 남겼다.
+- [ ] 정책의 적용 범위와 다른 미정 축, 실제 상태와 도입할 기능을 구분했다.
+- [ ] 원문 용법·일반 정의·저자와 편집자의 귀속, 수치의 시작점·단위를 확인했다.
 - [ ] PDF와 인쇄 쪽수의 대응을 해당 원문에서 확인했다.
 - [ ] 주장에 직접 쓰인 표·그림과 의심 항목의 후보·실제 표본을 기록했다.
 
@@ -57,8 +65,23 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 - [ ] 평가자가 예상 답변과 이전 결론을 받지 않았다.
 - [ ] 통과는 키워드 일치가 아니라 의미·행동 기준으로 판정했다.
 - [ ] 수정 뒤 최종 통과 근거에는 새 독립 평가가 포함돼 있다.
+- [ ] 보강 조건을 사용하는 대표 예시·후속에서 판정·근거·미확인 항목이 이어진다.
+- [ ] 새 대화용 후속은 채워진 요청만 받은 다른 새 컨텍스트에서 확인했다.
+- [ ] 전체 문서의 정적 검토와 실제 실행한 case의 통과 범위를 구분했다.
 
 같은 평가자의 재생성은 유용한 확인이지만, 새 독립 평가로 이름을 바꾸지 않습니다.
+
+---
+
+## 한국어 마지막 검수
+
+`improvement` 뒤 `freeze` 전에 vendored DaleSeo/korean-skills의 `humanizer → grammar-checker → style-guide`를 이 순서로 실제 읽어 적용합니다. 현재 subject의 Markdown·JSON·YAML을 빠짐없이 path/SHA-256으로 기록하고, 어색한 문장·맞춤법·띄어쓰기·문법·구두점·용어와 문서 스타일을 문맥으로 검토합니다. 단순 파일 존재나 자동 정규식만으로 이 검수를 통과로 표시하지 않습니다.
+
+통과 기록에는 제작자와 다른 reviewer, 세 upstream 스킬의 실제 경로·SHA-256·commit, 별도의 사람 또는 에이전트 검토 기록을 포함합니다. 조건·수치·인용·부정·기간·귀속은 모두 true로 보존을 확인해야 합니다. 영어 source, 원문 제목, 코드, 주식 전문 용어는 문맥상 적절하면 보존하며 humanizer의 추정 AUC를 이번 문장 검수 점수로 표현하지 않습니다. 상세 스키마는 [한국어 마지막 검수 계약](../.agents/skills/book-to-skill-followup/references/language-review.md)을 따릅니다.
+
+보조기는 vendor tree·파일 해시·세 단계의 검토 기록·읽기 manifest·reviewer와 fresh dispatch 기록의 구조를 검사합니다. Codex는 native `fork_turns: none`, Claude와 Antigravity는 같은 호스트의 fresh native context와 session ID를 기록합니다. 이 구조 검사는 실제 독립성, 문장의 어색함, 또는 의미 보존을 자동으로 증명하지 않습니다. 실제 검토자가 문맥과 세 단계 결과를 읽어 판정하며, 단위 fixture는 그 구조를 검증하는 mock입니다.
+
+보정이 필요하면 `freeze` 전 `revise --from-stage documentation`으로 관련 정적·행동 시험을 stale로 만든 뒤 새 증거로 다시 진행합니다. `freeze` 뒤에는 새 run을 시작합니다.
 
 ---
 
@@ -105,7 +128,7 @@ Claude Code에서는 `claude --version`을 사용합니다. Antigravity는 실�
 
 ## 제작 검증 결과
 
-2026-10-12에 Python 3.14.8과 Codex CLI 0.162.0 환경에서 확인했습니다. **최종 수용 실행 C는 `verify`와 `finalize`까지 통과**했습니다.
+2026-10-12에 Python 3.14.8과 Codex CLI 0.162.0 환경에서 확인했습니다. **최종 수용 실행 C는 당시 `verify`와 `finalize`까지 통과**했습니다. 이 기록은 이후 추가된 한국어 마지막 검수 도구 체인으로 재검증된 결과가 아니며, 그 검수는 새 run에서 수행해야 합니다.
 
 | 검사 | 실제 확인 범위 | 결과 |
 |---|---|---|

@@ -12,6 +12,8 @@ AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장�
 
 ## 입력 경로가 맞지 않음
 
+`FOLLOWUP_SKILL_DIR`은 제작 작업 공간의 도구 위치이며 `--project`는 책 결과물의 위치입니다. 두 경로를 같은 것으로 추측해 도구를 책 저장소에 복사하지 않습니다.
+
 | 증상 | 확인 | 처리 |
 |---|---|---|
 | 대상 스킬이 프로젝트 밖에 있음 | `--project`와 `--skill`의 실제 경로 관계 | 대상 하나와 허용 쓰기 경계를 다시 지정하고 새 실행 시작 |
@@ -24,6 +26,8 @@ AGY의 `result.status: SUCCESS`나 exit 0은 모든 도구의 성공을 보장�
 ---
 
 ## 도구·검사기가 실행되지 않음
+
+`nested-followup-tool`, `tracked-followup-tool`, `unexcluded-followup-tool`은 생성된 책에 제작 도구가 섞였거나 제외되지 않았다는 뜻입니다. `unmanaged-followup-tool`은 Git 없는 프로젝트의 도구를 배포 제외됐다고 확인할 수 없다는 뜻입니다. `git-status-unavailable`이면 Git 상태 확인 오류를 먼저 해결하며 제외 통과로 처리하지 않습니다. 정리는 허용된 경로·Git 작업 범위에서 하고, 원본 제작 도구나 전역 설치를 자동 삭제하지 않습니다. [배포 분리](../.agents/skills/book-to-skill-followup/references/packaging.md)를 따릅니다.
 
 `run_state.py`는 Python 표준 라이브러리만 사용합니다. `check_package.py`는 **Python 3.11 이상**, `PyYAML`, `markdown-it-py`가 필요합니다. 이 프로젝트를 제작·검수한 현재 환경에서는 두 파서를 확인했지만, 설치 대상 환경까지 자동으로 준비하지는 않습니다.
 

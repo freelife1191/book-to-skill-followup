@@ -13,6 +13,8 @@ description: Finish or revalidate a skill generated from a book or document afte
 
 현재 읽은 SKILL.md의 부모를 `FOLLOWUP_SKILL_DIR`로 사용한다. cwd에서 설치 경로를 추측하지 않는다. [명세](references/harness-spec.json)와 [증거 계약](references/evidence-contract.md)을 읽고 적용되는 지침·사용자 수정·허용 쓰기 경로를 확인한다.
 
+제작 도구는 책 결과물과 분리된 작업 공간에서 실행한다. 생성된 책 스킬·배포 저장소에 이 후속 스킬이나 호출 별칭을 복사하지 않는다. 기존 로컬 설치와 배포 파일의 구분·검사·정리는 [제작 도구와 배포 분리](references/packaging.md)를 따른다.
+
 목차 대응이나 예비 내용 검토부터 [원문 검수](references/source-audit.md)를 읽는다. 반영 파일을 찾은 것과 원문의 핵심 내용이 실제로 반영된 것을 구분한다.
 
 ```bash
@@ -36,6 +38,7 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/run_state.py" init \
 | static-checks | 전체 대상의 형식·경로·링크·앵커·범위 검사 | 증거 계약 |
 | behavior-tests | 새 컨텍스트의 대표 3유형과 오류 회귀 수행·판정 | [평가](references/evaluation.md) |
 | improvement | 실제 실패에 따른 최소 보완과 재검사 | 평가 |
+| language-review | 고정 전 한국어 전체를 세 vendored 스킬 순서로 독립 검수 | [한국어 마지막 검수](references/language-review.md), 증거 계약 |
 | freeze | 제작자와 다른 검토자의 내용·증거 판정과 해시 고정 | 역할, 증거 계약 |
 | host-smoke | 고정된 지식 스킬을 사용 호스트에서 1회 호출 | [호스트 연동](references/host-adapters.md) |
 | final-review | 호출 증거·고정 파일·검사 범위 독립 확인 | 역할, 증거 계약 |
@@ -68,6 +71,8 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/check_package.py" \
 
 정적 통과는 내용 정확성을 보증하지 않는다. 추가 스캐너를 쓰면 실제 검사 파일과 미포함 파일을 기록한다. 변환기의 기본 파일 목록만 검사하고 전체 자료가 통과했다고 말하지 않는다.
 
+원문에서 보강한 조건·예외는 지식 자료뿐 아니라 README·고급 예시·검토 기준·후속 입력에도 연결한다. 새 대화의 후속은 선택한 결과와 조건 판정·근거·미확인 사항을 받아야 한다. 기존 요청 ID·앵커·가상 입력을 보존하며, 맞지 않는 맥락은 별도 예시로 보완한다. 상세 기준과 시험은 문서 구성·평가 참조를 따른다.
+
 검사 단계는 snapshot의 현재 digest를 증거의 subject_digest로 결속한다. 실제 파일이 바뀌면 이전 검증을 재사용하지 않는다.
 
 ```bash
@@ -77,9 +82,15 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/run_state.py" revise --run-dir "$FOLLOWU
 
 run당 최대 2회 보완한다. 수정 후 필요한 단계부터 다시 진행하고 최초 실패·답변을 보존한다. 마지막 통과 근거에는 보완된 버전을 받은 새 평가자를 포함한다. 한 책의 수치·관습·시험 문구를 범용 필수 규칙으로 추가하지 않는다.
 
+## 한국어 마지막 검수
+
+`improvement` 뒤와 `freeze` 전에는 [DaleSeo/korean-skills](https://github.com/DaleSeo/korean-skills)의 vendored `humanizer` → `grammar-checker` → `style-guide`를 **그 순서대로 실제 읽어** 현재 대상의 한국어 문장을 검수한다. 단순 존재 확인이나 정규식 결과만으로 어색한 문장 검수를 통과로 표시하지 않는다. 영어 원문, 원문 제목, 코드, 해당 분야의 전문 용어는 문맥에 맞게 보존한다. humanizer가 언급하는 추정 AUC를 이 실행의 문장 검수 점수로 주장하지 않는다.
+
+표현·문법·용어 보정이 필요하면 `freeze` 전에 편집하고 `revise --from-stage documentation`으로 `static-checks`와 `behavior-tests`를 포함한 뒤 단계를 무효화한 뒤 새로 수행한다. `freeze` 뒤에는 교정하지 않는다. 이 게이트는 현재 대상의 Markdown·JSON·YAML 파일 전체와 조건·수치·인용·부정·기간·귀속 보존을 독립 검토 기록으로 결속한다. 필수 증거 형식·vendored 출처·실패 처리는 [한국어 마지막 검수](references/language-review.md)와 [증거 계약](references/evidence-contract.md)을 따른다.
+
 ## 최종 고정·호스트·완료
 
-최종 내용 검토를 통과한 freeze 증거를 기록한 뒤 스킬·문서·시험 기준·연동 설정을 바꾸지 않는다. 호스트 입력은 대상 지식 스킬의 README 등 실제 사용 요청 한 개다. **후속 스킬을 다시 호출하는 요청으로 재귀 시험하지 않는다.**
+한국어 마지막 검수와 최종 내용 검토를 통과한 freeze 증거를 기록한 뒤 스킬·문서·시험 기준·연동 설정을 바꾸지 않는다. 호스트 입력은 대상 지식 스킬의 README 등 실제 사용 요청 한 개다. **후속 스킬을 다시 호출하는 요청으로 재귀 시험하지 않는다.**
 
 ```bash
 python3 -B "$FOLLOWUP_SKILL_DIR/scripts/host_smoke.py" --run-dir "$FOLLOWUP_RUN_DIR" --prompt coordinator/host-input.txt
@@ -94,7 +105,7 @@ python3 -B "$FOLLOWUP_SKILL_DIR/scripts/run_state.py" verify --run-dir "$FOLLOWU
 python3 -B "$FOLLOWUP_SKILL_DIR/scripts/run_state.py" finalize --run-dir "$FOLLOWUP_RUN_DIR"
 ```
 
-호스트 결과·최종 판정은 run 기록에 저장한다. 호출 후 스킬의 출처 파일을 수정해 방금 검증한 버전을 바꾸지 않는다. 필수 원문 검수·독립 평가·사용 호스트 검사가 하나라도 빠지면 전체 완료로 보고하지 않는다.
+호스트 결과·최종 판정은 run 기록에 저장한다. 호출 후 스킬의 출처 파일을 수정해 방금 검증한 버전을 바꾸지 않는다. 필수 원문 검수·독립 평가·한국어 마지막 검수·사용 호스트 검사가 하나라도 빠지면 전체 완료로 보고하지 않는다. 이미 완료된 run이 이 새 도구 체인으로 재검증된 것은 아니며, 새 run이 필요하다.
 
 ## 보고
 

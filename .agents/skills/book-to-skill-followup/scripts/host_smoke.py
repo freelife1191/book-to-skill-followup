@@ -141,41 +141,183 @@ def normalized_events(host: str, raw_events: list[dict], project: Path) -> list[
     return normalized
 
 
+def completed_command_item(event: dict) -> dict | None:
+    """Return only a completed, successful Codex command event."""
+    if event.get("type") != "item.completed":
+        return None
+    item = event.get("item")
+    if not isinstance(item, dict) or item.get("type") != "command_execution":
+        return None
+    exit_code = item.get("exit_code")
+    if item.get("status") != "completed" or not isinstance(exit_code, int) or isinstance(exit_code, bool) or exit_code != 0:
+        return None
+    return item
+
+
+def command_segments(command: str) -> list[list[str]] | None:
+    """Parse the narrow read-only shell subset without evaluating shell syntax."""
+    if "\n" in command:
+        return None
+    try:
+        outer = shlex.split(command, posix=True)
+    except ValueError:
+        return None
+    if len(outer) == 3 and Path(outer[0]).name in {"sh", "bash", "zsh"} and outer[1] in {"-c", "-lc"}:
+        script = outer[2]
+    else:
+        script = command
+    if "\n" in script or any(token in script for token in ("$", "`")):
+        return None
+    try:
+        lexer = shlex.shlex(script, posix=True, punctuation_chars=";|&<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        return None
+    if not tokens:
+        return None
+    segments: list[list[str]] = [[]]
+    for token in tokens:
+        if token == ";":
+            if not segments[-1]:
+                return None
+            segments.append([])
+        elif token in {"|", "||", "&", "&&", "<", "<<", ">", ">>"}:
+            return None
+        else:
+            segments[-1].append(token)
+    return segments if segments[-1] else None
+
+
+def project_file(path_text: str, project: Path) -> Path | None:
+    candidate = Path(path_text)
+    candidate = candidate.resolve() if candidate.is_absolute() else (project / candidate).resolve()
+    try:
+        candidate.relative_to(project)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+def cat_paths(segment: list[str], project: Path) -> list[tuple[Path, bool]] | None:
+    if not segment or segment[0] != "cat" or len(segment) == 1 or any(arg.startswith("-") for arg in segment[1:]):
+        return None
+    paths: list[tuple[Path, bool]] = []
+    for arg in segment[1:]:
+        raw_path = Path(arg)
+        if not raw_path.is_absolute() and ".." in raw_path.parts:
+            return None
+        requested = raw_path if raw_path.is_absolute() else project / raw_path
+        resolved = requested.resolve()
+        in_project = resolved.is_relative_to(project)
+        if not resolved.is_file() or (requested.is_symlink() and not in_project):
+            return None
+        paths.append((resolved, in_project))
+    return paths
+
+
+def cat_bundle_paths(item: dict, segments: list[list[str]], project: Path) -> set[str]:
+    """Credit a cat-only sequence only when its whole output is exact and ordered."""
+    per_segment = [cat_paths(segment, project) for segment in segments]
+    if any(paths is None for paths in per_segment):
+        return set()
+    paths = [entry for group in per_segment for entry in group if entry is not None]
+    try:
+        expected = b"".join(path.read_bytes() for path, _ in paths).decode("utf-8")
+    except (OSError, UnicodeError):
+        return set()
+    if item.get("aggregated_output") != expected:
+        return set()
+    return {str(path) for path, in_project in paths if in_project}
+
+
+def simple_read_paths(segment: list[str], project: Path) -> set[str]:
+    """Retain the previous narrow sed/head/tail/rg/grep path-recognition contract."""
+    paths: set[str] = set()
+    if not segment or segment[0] not in {"sed", "head", "tail", "rg", "grep"}:
+        return paths
+    if segment[0] == "rg" and "--files" in segment:
+        return paths
+    for part in segment[1:]:
+        if part.startswith("-") or part.isdigit():
+            continue
+        candidate = project_file(part, project)
+        if candidate is not None:
+            paths.add(str(candidate))
+    return paths
+
+
 def codex_read_paths(events: list[dict], project: Path) -> set[str]:
-    """Extract only successful, simple command-path reads from Codex JSON events."""
+    """Extract verified read paths from successful Codex command-completion events."""
     project = project.resolve()
     paths: set[str] = set()
     for event in events:
-        item = event.get("item", event) if isinstance(event, dict) else {}
-        if not isinstance(item, dict) or item.get("type") != "command_execution" or item.get("exit_code") != 0:
+        if not isinstance(event, dict):
+            continue
+        item = completed_command_item(event)
+        if item is None:
             continue
         command = item.get("command")
         if not isinstance(command, str):
             continue
-        try:
-            parts = shlex.split(command)
-        except ValueError:
+        segments = command_segments(command)
+        if segments is None:
             continue
-        if len(parts) == 3 and Path(parts[0]).name in {"sh", "bash", "zsh"} and parts[1] in {"-c", "-lc"}:
-            try:
-                parts = shlex.split(parts[2])
-            except ValueError:
-                continue
-        if any(token in command for token in (";", "|", "&", "$", "`", "\n")) or not parts or parts[0] not in {"cat", "sed", "head", "tail", "rg", "grep"}:
-            continue
-        if parts[0] == "rg" and "--files" in parts:
-            continue
-        for part in parts[1:]:
-            if part.startswith("-") or part.isdigit():
-                continue
-            candidate = (project / part).resolve() if not Path(part).is_absolute() else Path(part).resolve()
-            try:
-                candidate.relative_to(project)
-            except ValueError:
-                continue
-            if candidate.is_file():
-                paths.add(str(candidate))
+        if all(segment[0] == "cat" for segment in segments):
+            paths.update(cat_bundle_paths(item, segments, project))
+        elif len(segments) == 1:
+            paths.update(simple_read_paths(segments[0], project))
     return paths
+
+
+def final_answer(events: list[dict], host: str) -> tuple[str, str] | None:
+    """Return the exact terminal host answer and its trace-bound host identity.
+
+    Claude's terminal result ``uuid`` identifies that serialized event.  Older
+    CLI result records may omit it; their ``session_id`` identifies the final
+    successful result selected from this one raw trace instead.
+    """
+    if host == "claude":
+        results = [event for event in events if isinstance(event, dict) and event.get("type") == "result"
+                   and event.get("is_error") is False and isinstance(event.get("result"), str) and event["result"]]
+        if not results:
+            return None
+        result = results[-1]
+        identifier = value(result, "uuid", "session_id")
+        return (result["result"], identifier) if isinstance(identifier, str) and identifier else None
+    if host == "antigravity":
+        if any(isinstance(event, dict) and "event" in event for event in events):
+            conversation = agy_conversation(events)
+            results = [event.get("result") for event in events if isinstance(event, dict) and event.get("event") == "result"]
+            if conversation is None or len(results) != 1 or not isinstance(results[0], dict):
+                return None
+            result = results[0]
+            response = result.get("response")
+            if result.get("conversation_id") != conversation or result.get("status") != "SUCCESS" or not isinstance(response, str) or not response:
+                return None
+            return response, conversation
+        results = [event for event in events if isinstance(event, dict) and event.get("type") == "result"
+                   and event.get("is_error") is False and isinstance(event.get("result"), str) and event["result"]]
+        if not results:
+            return None
+        result = results[-1]
+        identifier = value(result, "uuid", "id")
+        return (result["result"], identifier) if isinstance(identifier, str) and identifier else None
+    completed = [event.get("item") for event in events if isinstance(event, dict) and event.get("type") == "item.completed"
+                 and isinstance(event.get("item"), dict)]
+    if not completed:
+        return None
+    item = completed[-1]
+    text = item.get("text") if item.get("type") == "agent_message" else None
+    identifier = item.get("id")
+    return (text, identifier) if isinstance(text, str) and text and isinstance(identifier, str) and identifier else None
+
+
+def persist_answer(run_dir: Path, answer: str, event_id: str) -> dict:
+    path = run_dir / "host" / "answer.txt"
+    path.write_text(answer, encoding="utf-8")
+    return {"answer_file": str(path.relative_to(run_dir)), "answer_sha256": sha256_file(path), "answer_event_id": event_id}
 
 
 def claude_read_paths(events: list[dict]) -> set[str]:
@@ -403,8 +545,14 @@ def run(run_dir: Path, prompt_rel: str, timeout: int, executable: str | None, im
         raw_events = json_events(raw)
         events = normalized_events(host, raw_events, project)
         record.update({"adapter": adapter, "import_trace": import_trace,
-                       "stdout": raw, "answer_sha256": hashlib.sha256(raw.encode()).hexdigest(), "events": events})
+                       "stdout": raw, "events": events})
         record.update(persist_trace(run_dir, raw, events))
+        answer = final_answer(raw_events, host)
+        if answer is None:
+            record.update({"answer_file": None, "answer_sha256": None, "answer_event_id": None, "returncode": 1})
+            record["errors"].append({"code": "answer-unavailable", "message": "imported trace has no final host answer event"})
+            return record
+        record.update(persist_answer(run_dir, *answer))
         reads = {str(Path(item["path"]).resolve()) for item in events if item.get("type") == "tool.read"}
         copied = {str((target / "SKILL.md").resolve())}
         complete = any(item.get("type") == "turn.completed" for item in events)
@@ -436,8 +584,7 @@ def run(run_dir: Path, prompt_rel: str, timeout: int, executable: str | None, im
                                      stdout=stdout_handle, stderr=stderr_handle, timeout=timeout, env=os.environ.copy())
         stdout = stdout_file.read_text(encoding="utf-8", errors="replace")
         stderr = stderr_file.read_text(encoding="utf-8", errors="replace")
-        record.update({"returncode": process.returncode, "stdout": stdout, "stderr": stderr,
-                       "answer_sha256": hashlib.sha256(stdout.encode()).hexdigest()})
+        record.update({"returncode": process.returncode, "stdout": stdout, "stderr": stderr})
     except subprocess.TimeoutExpired as exc:
         stdout = stdout_file.read_text(encoding="utf-8", errors="replace")
         stderr = stderr_file.read_text(encoding="utf-8", errors="replace")
@@ -461,6 +608,12 @@ def run(run_dir: Path, prompt_rel: str, timeout: int, executable: str | None, im
     events = normalized_events(host, raw_events, project)
     record["events"] = events
     record.update(persist_trace(run_dir, stdout, events))
+    answer = final_answer(raw_events, host)
+    if answer is None:
+        record.update({"answer_file": None, "answer_sha256": None, "answer_event_id": None, "verdict": "blocked"})
+        record["errors"].append({"code": "answer-unavailable", "message": "host trace has no final host answer event"})
+        return record
+    record.update(persist_answer(run_dir, *answer))
     copied = {str((target / "SKILL.md").resolve())}
     reads = {str(Path(item["path"]).resolve()) for item in events if item.get("type") == "tool.read"}
     complete = any(item.get("type") == "turn.completed" for item in events)

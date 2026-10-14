@@ -52,3 +52,9 @@ import는 기존 quota 1회와 동일한 격리 복사본을 검증하며 재호
 Claude의 init `skills`/`agents`는 발견·등록 증거이며 요청 수행의 증거가 아니다. `result.is_error: true`는 subtype이나 종료 메시지와 무관하게 실패다. Read의 정상 tool_result는 공식 예제처럼 is_error를 생략할 수도 있으므로 요청 ID와 결과 내용을 결속한다. [공식 도구 결과](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls).
 
 Antigravity init의 `expanded_commands`는 실제 slash 확장 증거이며 view_file 읽기와 별도로 표시한다. 발견/확장을 파일 읽기라고 바꾸어 기록하지 않는다. OAuth 만료 등 인증 실패는 원래 로그를 남기고, 다른 인증이나 권한 우회로 성공을 만들지 않는다. 사용자가 해당 호스트를 건너뛰라고 하면 추가 호출하지 않는다.
+
+## Codex 배치 읽기 로그와 답변 해시
+
+Codex 로그는 실제 `item.completed`의 command_execution, `status: completed`, 정수 exit_code 0을 확인한다. 단순 `cat`을 세미콜론으로 이어 실행한 로그는 셸로 다시 실행하지 않고 인자를 분석한다. 순서대로 연결한 실제 UTF-8 파일 내용과 원래 aggregated_output가 정확히 같을 때만 격리 프로젝트 내부의 파일을 읽기 증거로 인정한다. 파이프·조건부 실행·리다이렉션·명령 치환·쓰기 명령은 허용하지 않는다. 단순 sed/head/tail/rg/grep는 개별 읽기 로그만 판정하며, 여러 명령의 마지막 종료 코드만으로 앞선 명령의 성공을 추정하지 않는다.
+
+최종 답변은 호스트의 실제 최종 응답에서 추출해 `host/answer.txt`로 보존한다. `answer_sha256`는 답변 파일의 정확한 UTF-8 바이트를, `raw_trace_sha256`는 원래 로그를 가리킨다. 답변이 없거나 해시가 다르면 완료 근거로 사용하지 않는다. 실제 호출 없이 기존 로그를 재생한 단위 검증과, 새 실행의 최종 호스트 호출은 별도로 기록한다.

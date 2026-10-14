@@ -2,7 +2,7 @@
 
 ## 1. 설치 확인
 
-프로젝트에 다음 구조가 있어야 합니다.
+책 결과물과 분리된 제작 작업 공간에 다음 구조가 있어야 합니다. 결과물 프로젝트에 이 스킬을 설치하는 것이 기본 사용 조건은 아닙니다.
 
 ```text
 .agents/skills/book-to-skill-followup/
@@ -41,7 +41,7 @@ $book-to-skill-followup
 메인 에이전트가 상태 파일을 시작할 때 사용하는 명령 형식입니다. `--skill`은 프로젝트 루트에 대한 상대 경로이며, 다른 경로는 절대 경로입니다.
 
 ```bash
-python3 -B /absolute/path/to/project/.agents/skills/book-to-skill-followup/scripts/run_state.py \
+python3 -B /absolute/path/to/authoring-workspace/.agents/skills/book-to-skill-followup/scripts/run_state.py \
   init \
   --project /absolute/path/to/project \
   --skill .agents/skills/my-book-skill \
@@ -66,7 +66,7 @@ python3 -B /absolute/path/to/project/.agents/skills/book-to-skill-followup/scrip
 다른 가이드의 명령 예시에서 쓰는 변수는 실제 설치 경로와 init이 반환한 실행 경로로 설정합니다.
 
 ```bash
-FOLLOWUP_SKILL_DIR='/absolute/path/to/project/.agents/skills/book-to-skill-followup'
+FOLLOWUP_SKILL_DIR='/absolute/path/to/authoring-workspace/.agents/skills/book-to-skill-followup'
 FOLLOWUP_RUN_DIR='/absolute/path/to/project/_workspace/harness/book-to-skill-followup/실행-ID'
 ```
 
@@ -75,8 +75,11 @@ FOLLOWUP_RUN_DIR='/absolute/path/to/project/_workspace/harness/book-to-skill-fol
 | `run.json` | 단계 상태, 입력 해시, 차단·무효화 여부 |
 | `coordinator/static-checks.json` | 구조·링크·패키지 검사 결과 |
 | `forward-tester/behavior-tests.json` | 독립 행동 시험의 입력·판정·제한 |
+| `release-reviewer/language-review.json` | 한국어 마지막 검수의 세 스킬 순서·파일 범위·의미 보존·독립 기록 |
 | `release-reviewer/final-review.json` | 최종 완료 또는 차단 판정 |
 | `coordinator/host-smoke.json` | 고정 후 실행한 호스트 1회의 결과 |
 
 다음으로 [워크플로](workflow.md)에서 단계별 의미와 재개 조건을 확인하세요.
+
+배포할 책 폴더에는 대상 지식·필요한 별칭·사용 문서를 담고 제작 도구는 넣지 않습니다. 기존 설치가 있으면 [배포 분리](../.agents/skills/book-to-skill-followup/references/packaging.md)에 따라 실제 추적·제외 상태를 확인합니다.
 

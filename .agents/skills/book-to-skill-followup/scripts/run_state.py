@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import uuid
@@ -14,16 +15,22 @@ from typing import Any
 from runtime_common import (StateError, claim_host, ensure_relative, load_state,
                             mutate_state, package_snapshot, sha256_file,
                             workflow_snapshot)
+from host_smoke import digest_tree, final_answer, json_events, normalized_events
 
 STAGES = ["preflight", "inventory", "source-audit", "skill-refinement", "documentation",
-          "static-checks", "behavior-tests", "improvement", "freeze", "host-smoke", "final-review"]
-CHECK_STAGES = {"static-checks", "behavior-tests", "freeze", "host-smoke", "final-review"}
+          "static-checks", "behavior-tests", "improvement", "language-review", "freeze", "host-smoke", "final-review"]
+CHECK_STAGES = {"static-checks", "behavior-tests", "language-review", "freeze", "host-smoke", "final-review"}
 REVISION_STAGES = {"skill-refinement", "documentation"}
+LANGUAGE_REVIEW_PIPELINE = ("humanizer", "grammar-checker", "style-guide")
+KOREAN_SKILLS_COMMIT = "ae12ba27982ebeff03b46dc738365aaa34260d9a"
+MEANING_PRESERVATION_FIELDS = ("conditions", "numbers", "citations", "negations", "periods", "attributions")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+AGENT_REVIEW_SURFACES = {"codex": "codex-native", "claude": "claude-native", "antigravity": "antigravity-native"}
 EXPECTED_DEPENDENCIES = {
     "preflight": set(), "inventory": {"preflight"}, "source-audit": {"inventory"},
     "skill-refinement": {"source-audit"}, "documentation": {"skill-refinement"},
     "static-checks": {"documentation"}, "behavior-tests": {"static-checks"},
-    "improvement": {"behavior-tests"}, "freeze": {"improvement"},
+    "improvement": {"behavior-tests"}, "language-review": {"improvement"}, "freeze": {"language-review"},
     "host-smoke": {"freeze"}, "final-review": set(STAGES[:-1]),
 }
 
@@ -68,6 +75,194 @@ def _exact_ids(value: Any, expected: set[str], label: str) -> None:
 
 def _current_digest(state: dict[str, Any]) -> str:
     return package_snapshot(state)["digest"]
+
+
+def _language_review_vendor() -> dict[str, tuple[str, str]]:
+    """Return pinned review skills after proving the complete vendored tree matches provenance."""
+    root = Path(__file__).resolve().parent.parent / "assets" / "korean-skills"
+    if root.is_symlink() or not root.is_dir(): _error("Korean review vendor root is unavailable")
+    provenance_path = root / "provenance.json"
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        _error(f"Korean review provenance is unavailable: {exc}")
+    if not isinstance(provenance, dict): _error("Korean review provenance must be an object")
+    if provenance.get("repository") != "https://github.com/DaleSeo/korean-skills":
+        _error("Korean review provenance repository is invalid")
+    if provenance.get("commit") != KOREAN_SKILLS_COMMIT:
+        _error("Korean review provenance commit is invalid")
+    if provenance.get("license") != "MIT": _error("Korean review provenance license is invalid")
+    if tuple(provenance.get("included_skills", [])) != LANGUAGE_REVIEW_PIPELINE:
+        _error("Korean review provenance skills are invalid")
+    entries = provenance.get("files")
+    if not isinstance(entries, list): _error("Korean review provenance files are invalid")
+    declared: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict): _error("Korean review provenance file entries must be objects")
+        relative = _str(entry.get("path"), "Korean review provenance file path")
+        if relative == "provenance.json": _error("Korean review provenance must not declare itself")
+        path = ensure_relative(root, relative)
+        if path.is_symlink() or not path.is_file() or relative in declared:
+            _error("Korean review provenance file paths must be unique regular files")
+        digest = _str(entry.get("sha256"), "Korean review provenance file hash")
+        if not SHA256.fullmatch(digest): _error("Korean review provenance file hash must be SHA-256")
+        declared[relative] = digest
+    actual: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink(): _error(f"Korean review vendor symlink is not allowed: {relative}")
+        if path.is_file() and relative != "provenance.json": actual[relative] = sha256_file(path)
+    if declared != actual: _error("Korean review provenance files do not exactly match the vendor tree")
+    license_path = root / "LICENSE"
+    try:
+        if "MIT License" not in license_path.read_text(encoding="utf-8"):
+            _error("Korean review vendor LICENSE lacks MIT notice")
+    except OSError as exc:
+        _error(f"Korean review vendor LICENSE is unavailable: {exc}")
+    patches = provenance.get("local_patches")
+    if not isinstance(patches, list) or len(patches) != 2:
+        _error("Korean review provenance must record the two local patches")
+    patched_paths: set[str] = set()
+    for patch in patches:
+        if not isinstance(patch, dict): _error("Korean review local patch must be an object")
+        relative = _str(patch.get("path"), "Korean review local patch.path")
+        if relative in patched_paths or relative not in declared: _error("Korean review local patch path is invalid")
+        patched_paths.add(relative)
+        upstream = _str(patch.get("upstream_sha256"), "Korean review local patch.upstream_sha256")
+        bundled = _str(patch.get("bundled_sha256"), "Korean review local patch.bundled_sha256")
+        if not SHA256.fullmatch(upstream) or not SHA256.fullmatch(bundled) or bundled != declared[relative]:
+            _error("Korean review local patch hashes are invalid")
+    result: dict[str, tuple[str, str]] = {}
+    for name in LANGUAGE_REVIEW_PIPELINE:
+        relative = f"skills/{name}/SKILL.md"
+        expected = declared.get(relative)
+        path = root / relative
+        if not isinstance(expected, str) or len(expected) != 64 or path.is_symlink() or not path.is_file():
+            _error(f"Korean review vendor is incomplete: {relative}")
+        actual = sha256_file(path)
+        if actual != expected: _error(f"Korean review vendor hash mismatch: {relative}")
+        result[name] = (f"assets/korean-skills/{relative}", actual)
+    return result
+
+
+def _bound_run_record(run: Path, value: Any, label: str) -> Path:
+    if not isinstance(value, dict): _error(f"{label} must be an object")
+    path = _run_file(run, value.get("path"), f"{label}.path")
+    if sha256_file(path) != _str(value.get("sha256"), f"{label}.sha256"):
+        _error(f"{label} hash mismatch")
+    return path
+
+
+def _bound_json_run_record(run: Path, value: Any, label: str) -> dict[str, Any]:
+    path = _bound_run_record(run, value, label)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        _error(f"{label} must be UTF-8 JSON: {exc}")
+    if not isinstance(data, dict): _error(f"{label} JSON must be an object")
+    return data
+
+
+def _regular_tree(root: Path, label: str) -> tuple[str, list[dict]]:
+    if root.is_symlink() or not root.is_dir(): _error(f"{label} must be a regular directory")
+    for path in root.rglob("*"):
+        if path.is_symlink(): _error(f"{label} must not contain symlinks")
+    return digest_tree(root)
+
+
+def _reviewed_language_files(state: dict[str, Any]) -> dict[str, str]:
+    snapshot = package_snapshot(state)["files"]
+    return {path: digest for path, digest in snapshot.items()
+            if Path(path).suffix.lower() in {".md", ".markdown", ".json", ".yaml", ".yml"}}
+
+
+def _validate_language_review_evidence(state: dict[str, Any], data: dict[str, Any], run: Path) -> None:
+    producer = state.get("producer_id")
+    reviewer = _independent_id(data.get("reviewer_id"), "language review reviewer_id", producer)
+    if tuple(_list(data.get("pipeline"), "language review pipeline")) != LANGUAGE_REVIEW_PIPELINE:
+        _error("language review pipeline must be humanizer, grammar-checker, style-guide in order")
+    vendor = _language_review_vendor()
+    supplied = _list(data.get("upstream_skills"), "language review upstream_skills")
+    if len(supplied) != len(LANGUAGE_REVIEW_PIPELINE): _error("language review upstream_skills must list each skill once")
+    seen: set[str] = set()
+    for item in supplied:
+        if not isinstance(item, dict): _error("language review upstream_skills entries must be objects")
+        name = _str(item.get("id"), "language review upstream skill id")
+        if name in seen or name not in vendor: _error("language review upstream skill ids must be exact and unique")
+        seen.add(name)
+        path, digest = vendor[name]
+        if item.get("path") != path or item.get("sha256") != digest or item.get("commit") != KOREAN_SKILLS_COMMIT:
+            _error("language review upstream skill path, hash, or commit differs from the pinned vendor")
+    if tuple(item.get("id") for item in supplied) != LANGUAGE_REVIEW_PIPELINE:
+        _error("language review upstream_skills must follow the review pipeline order")
+    reviewed: dict[str, str] = {}
+    for item in _list(data.get("reviewed_files"), "language review reviewed_files"):
+        if not isinstance(item, dict): _error("language review reviewed_files entries must be objects")
+        path = _str(item.get("path"), "language review reviewed_file.path")
+        if path in reviewed: _error("language review reviewed_files paths must be unique")
+        reviewed[path] = _str(item.get("sha256"), "language review reviewed_file.sha256")
+    if reviewed != _reviewed_language_files(state):
+        _error("language review reviewed_files must exactly cover current Markdown, JSON, and YAML subject files")
+    stage_records = _list(data.get("pipeline_records"), "language review pipeline_records")
+    if len(stage_records) != len(LANGUAGE_REVIEW_PIPELINE): _error("language review needs one record for every pipeline stage")
+    if tuple(item.get("id") if isinstance(item, dict) else None for item in stage_records) != LANGUAGE_REVIEW_PIPELINE:
+        _error("language review pipeline_records must follow the review pipeline order")
+    for item in stage_records:
+        if not isinstance(item, dict): _error("language review pipeline record must be an object")
+        if _str(item.get("reviewer_id"), "language review pipeline record.reviewer_id") != reviewer:
+            _error("language review pipeline record reviewer_id must match the independent reviewer")
+        _bound_run_record(run, item, "language review pipeline record")
+    manifest = data.get("read_manifest")
+    manifest_data = _bound_json_run_record(run, manifest, "language review read_manifest")
+    if (not isinstance(manifest, dict) or manifest.get("skills") != supplied or
+            manifest.get("subject_files") != data.get("reviewed_files") or
+            manifest_data.get("skills") != supplied or manifest_data.get("subject_files") != data.get("reviewed_files")):
+        _error("language review read_manifest must bind the reviewed skills and subject files")
+    method = data.get("review_method")
+    if not isinstance(method, dict): _error("language review review_method must be an object")
+    if _str(method.get("reviewer_id"), "language review review_method.reviewer_id") != reviewer:
+        _error("language review review_method reviewer_id must match the independent reviewer")
+    kind = method.get("kind")
+    if kind == "agent":
+        _strict(method.get("fresh"), "language review review_method.fresh")
+        dispatch = method.get("dispatch")
+        expected_surface = AGENT_REVIEW_SURFACES.get(state.get("host"))
+        if not isinstance(dispatch, dict) or dispatch.get("surface") != expected_surface:
+            _error("language review agent review_method surface must match the run host")
+        if state.get("host") == "codex":
+            if dispatch.get("fork_turns") != "none":
+                _error("language review codex agent requires fork_turns=none")
+        elif dispatch.get("fresh_context") is not True or not isinstance(dispatch.get("session_id"), str) or not dispatch["session_id"]:
+            _error("language review non-Codex agent requires a fresh context and session ID")
+    elif kind == "human":
+        _str(method.get("reviewer"), "language review human reviewer")
+    else:
+        _error("language review review_method kind must be human or agent")
+    execution = data.get("execution_record")
+    execution_data = _bound_json_run_record(run, execution, "language review execution_record")
+    if (not isinstance(execution, dict) or execution.get("reviewer_id") != reviewer or execution.get("method") != kind or
+            execution_data.get("reviewer_id") != reviewer or execution_data.get("method") != kind):
+        _error("language review execution_record must bind the reviewer and review method")
+    if kind == "agent" and (execution_data.get("fresh") is not True or execution_data.get("dispatch") != method.get("dispatch")):
+        _error("language review execution_record must bind the fresh native dispatch")
+    if kind == "human" and execution_data.get("reviewer") != method.get("reviewer"):
+        _error("language review execution_record must identify the human reviewer")
+    preservation = data.get("meaning_preservation")
+    if not isinstance(preservation, dict) or set(preservation) != set(MEANING_PRESERVATION_FIELDS):
+        _error("language review meaning_preservation must contain the six required fields")
+    for field in MEANING_PRESERVATION_FIELDS:
+        _strict(preservation.get(field), f"language review meaning_preservation.{field}")
+    if _list(data.get("blockers"), "language review blockers") != []: _error("language review blockers must be empty")
+    if _list(data.get("remaining_findings"), "language review remaining_findings") != []:
+        _error("language review remaining_findings must be empty")
+    records = _list(data.get("independent_review_evidence"), "language review independent_review_evidence")
+    if not records: _error("language review needs a separate human or agent review record")
+    for record in records:
+        if not isinstance(record, dict) or record.get("kind") not in {"human", "agent"}:
+            _error("language review record must identify a human or agent")
+        if _str(record.get("reviewer_id"), "language review record.reviewer_id") != reviewer:
+            _error("language review record reviewer_id must match the independent reviewer")
+        _bound_run_record(run, record, "language review record")
 
 
 def _validate_supported_spec(path: Path) -> None:
@@ -157,8 +352,17 @@ def _evidence_artifacts(state: dict[str, Any], stage: str, data: dict[str, Any],
                 add(_artifact_file(state, run, entry, "case.read_files"))
     if stage == "host-smoke":
         add(_run_artifact(run, data["trace_file"], "host.trace_file"))
+        add(_run_artifact(run, data["raw_trace_file"], "host.raw_trace_file"))
+        add(_run_artifact(run, data["answer_file"], "host.answer_file"))
         for proof in data["proof_files"]:
             add(_artifact_file(state, run, {**proof, "scope": "run"}, "proof_files"))
+    if stage == "language-review":
+        for record in data["independent_review_evidence"]:
+            add(_run_artifact(run, record["path"], "language review record.path"))
+        for record in data["pipeline_records"]:
+            add(_run_artifact(run, record["path"], "language review pipeline record.path"))
+        add(_run_artifact(run, data["read_manifest"]["path"], "language review read_manifest.path"))
+        add(_run_artifact(run, data["execution_record"]["path"], "language review execution_record.path"))
 
     def walk(value: Any) -> None:
         if isinstance(value, dict):
@@ -362,6 +566,8 @@ def _validate_evidence(state: dict[str, Any], stage: str, data: Any, run: Path) 
                     _error("prior behavior evidence archive is invalid")
             if prior_ids & {case["evaluator_id"] for case in cases}:
                 _error("post-revision behavior tests require a new evaluator_id")
+    elif stage == "language-review":
+        _validate_language_review_evidence(state, data, run)
     elif stage == "freeze":
         _independent_id(data.get("reviewer_id"), "freeze reviewer_id", producer)
         if _list(data.get("blockers"), "blockers") != []: _error("freeze blockers must be empty")
@@ -377,30 +583,66 @@ def _validate_evidence(state: dict[str, Any], stage: str, data: Any, run: Path) 
         trace = _run_file(run, data.get("trace_file"), "host.trace_file")
         if sha256_file(trace) != _str(data.get("trace_sha256"), "host.trace_sha256"):
             _error("host trace hash mismatch")
+        raw_trace = _run_file(run, data.get("raw_trace_file"), "host.raw_trace_file")
+        if sha256_file(raw_trace) != _str(data.get("raw_trace_sha256"), "host.raw_trace_sha256"):
+            _error("host raw trace hash mismatch")
+        answer = _run_file(run, data.get("answer_file"), "host.answer_file")
+        try:
+            answer_text = answer.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            _error(f"host answer must be UTF-8: {exc}")
+        if not answer_text.strip(): _error("host answer must be non-empty")
+        if sha256_file(answer) != _str(data.get("answer_sha256"), "host.answer_sha256"):
+            _error("host answer hash mismatch")
+        try:
+            terminal = final_answer(json_events(raw_trace.read_text(encoding="utf-8")), state["host"])
+        except UnicodeDecodeError as exc:
+            _error(f"host raw trace must be UTF-8: {exc}")
+        if terminal is None:
+            _error("host raw trace has no final host answer event")
+        expected_answer, expected_event_id = terminal
+        if data.get("answer_event_id") != expected_event_id or answer_text != expected_answer:
+            _error("host answer does not match the raw trace terminal answer")
+        project_root = Path(state["project"]).resolve(strict=True)
+        source_skill = ensure_relative(project_root, state["skill_rel"])
+        source_digest, source_files = _regular_tree(source_skill, "frozen source skill")
+        skill_id = Path(state["skill_rel"]).name
+        copied_skill_root = run / "host" / "project" / ".agents" / "skills" / skill_id
+        copy_digest, copied_files = _regular_tree(copied_skill_root, "host copied skill")
+        source_master = source_skill / "SKILL.md"
+        copied_master = copied_skill_root / "SKILL.md"
+        if (source_master.is_symlink() or copied_master.is_symlink() or not source_master.is_file() or not copied_master.is_file() or
+                sha256_file(source_master) != sha256_file(copied_master)):
+            _error("host copied master SKILL.md differs from the frozen source")
+        if (data.get("copy_digest") != copy_digest or data.get("copied_files") != copied_files or
+                source_digest != copy_digest or source_files != copied_files):
+            _error("host copied skill tree does not exactly match the frozen source")
         proofs = _list(data.get("proof_files"), "proof_files")
         if not proofs: _error("host proof_files cannot be empty")
-        copied_skill = False
+        expected_master = copied_master.relative_to(run).as_posix()
+        copied_master_proven = False
         for proof in proofs:
             if not isinstance(proof, dict): _error("proof file must be an object")
             path = _run_file(run, proof.get("path"), "proof.path")
             if sha256_file(path) != _str(proof.get("sha256"), "proof.sha256"): _error("proof file hash mismatch")
-            suffix = (".agents", "skills", Path(state["skill_rel"]).name, "SKILL.md")
-            copied_skill = copied_skill or tuple(path.relative_to(run).parts[-4:]) == suffix
-        if not copied_skill: _error("host proof must include the copied SKILL.md")
+            copied_master_proven = copied_master_proven or path.relative_to(run).as_posix() == expected_master
+        if not copied_master_proven: _error("host proof must include the exact copied master SKILL.md")
         try:
             trace_data = json.loads(trace.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             _error(f"host trace must be JSON: {exc}")
         events = trace_data.get("events", []) if isinstance(trace_data, dict) else trace_data
-        if not isinstance(events, list) or not any(isinstance(event, dict) and event.get("type") == "turn.completed" for event in events):
-            _error("host trace lacks turn.completed")
-        read_paths = {
-            str(Path(event["path"]).resolve()) for event in events
-            if isinstance(event, dict) and event.get("type") in {"read", "tool.read"}
-            and event.get("success") is True and isinstance(event.get("path"), str)
-        }
-        if not any(str(_run_file(run, proof["path"], "proof.path").resolve()) in read_paths for proof in proofs):
-            _error("host trace lacks a successful read of a bound proof file")
+        copied_project = run / "host" / "project"
+        if copied_project.is_symlink() or not copied_project.is_dir(): _error("host copied project is unavailable")
+        derived_events = normalized_events(state["host"], json_events(raw_trace.read_text(encoding="utf-8")), copied_project)
+        if not isinstance(events, list) or events != derived_events:
+            _error("host normalized trace does not exactly match the raw trace")
+        if not any(event.get("type") == "turn.completed" for event in derived_events):
+            _error("host raw trace lacks turn.completed")
+        read_paths = {str(Path(event["path"]).resolve()) for event in derived_events
+                      if event.get("type") == "tool.read" and event.get("success") is True}
+        if str(copied_master.resolve()) not in read_paths:
+            _error("host raw trace lacks a successful read of the exact copied master SKILL.md")
     elif stage == "final-review":
         _independent_id(data.get("reviewer_id"), "final reviewer_id", producer)
         if _list(data.get("blockers"), "blockers") != []: _error("final review blockers must be empty")
@@ -600,7 +842,7 @@ def cmd_resume(args: argparse.Namespace) -> dict[str, Any]:
             state["spec_sha256"] = sha256_file(spec)
             state["toolchain"] = workflow_snapshot(Path(__file__).resolve().parent.parent)
         elif current != state.get("subject"):
-            _invalidate(state, ["static-checks", "behavior-tests", "freeze", "host-smoke", "final-review"], "subject changed")
+            _invalidate(state, ["static-checks", "behavior-tests", "improvement", "language-review", "freeze", "host-smoke", "final-review"], "subject changed")
         state["subject"] = current
         return {"preflight_stale": preflight_stale, "subject_digest": current["digest"], "statuses": {x: state["stages"][x]["status"] for x in STAGES}}
     return mutate_state(Path(args.run_dir), action)

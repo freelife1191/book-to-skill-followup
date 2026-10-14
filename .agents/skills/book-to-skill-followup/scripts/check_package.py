@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -27,6 +29,15 @@ FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 HTML_ID = re.compile(r"\bid\s*=\s*(['\"])(.*?)\1", re.IGNORECASE)
 INSTRUCTION = re.compile(r"\b(?:run|execute|install|delete|remove|curl|wget|npm\s+install|pip\s+install)\b|(?:실행|설치|삭제)\b", re.IGNORECASE)
 ADVISORY = re.compile(r"\b(?:example|quoted?|citation|book|do not run)\b|(?:예시|인용|책|실행하지)\b", re.IGNORECASE)
+FOLLOWUP_SKILL_PATHS = tuple(Path(host) / "skills" / "book-to-skill-followup"
+                            for host in (".agents", ".claude", ".codex", ".agent"))
+FOLLOWUP_PROFILE_PATHS = tuple(
+    Path(host) / "agents" / f"book-followup-{role}.{extension}"
+    for host in (".agents", ".claude", ".codex")
+    for role in ("source-reviewer", "forward-tester", "release-reviewer")
+    for extension in ("md", "toml")
+)
+FOLLOWUP_DELIVERY_PATHS = FOLLOWUP_SKILL_PATHS + FOLLOWUP_PROFILE_PATHS
 
 
 def sha256_file(path: Path) -> str:
@@ -209,6 +220,108 @@ def allowed_claude_alias(project: Path, supplied: Path, resolved: Path) -> bool:
             and resolved == canonical(project / ".agents" / "skills" / rel.name))
 
 
+def git_root(project: Path) -> tuple[Path | None, str | None]:
+    try:
+        result = subprocess.run(["git", "-C", str(project), "rev-parse", "--show-toplevel"],
+                                capture_output=True, text=True, env={**os.environ, "LC_ALL": "C"})
+    except OSError as exc:
+        return None, str(exc)
+    if result.returncode:
+        if "not a git repository" in result.stderr.lower():
+            return None, None
+        return None, result.stderr.strip() or f"git rev-parse exited {result.returncode}"
+    if not result.stdout.strip():
+        return None, "git did not report a repository root"
+    return canonical(Path(result.stdout.strip())), None
+
+
+def git_tracks(repository: Path, path: Path) -> bool | None:
+    try:
+        relative = path.relative_to(repository)
+    except ValueError:
+        return None
+    try:
+        result = subprocess.run(["git", "-C", str(repository), "ls-files", "--error-unmatch", "--", str(relative)],
+                                capture_output=True, text=True)
+    except OSError:
+        return None
+    return {0: True, 1: False}.get(result.returncode)
+
+
+def git_ignores(repository: Path, path: Path) -> bool | None:
+    try:
+        relative = path.relative_to(repository)
+    except ValueError:
+        return None
+    try:
+        result = subprocess.run(["git", "-C", str(repository), "check-ignore", "-q", "--", str(relative)],
+                                capture_output=True, text=True)
+    except OSError:
+        return None
+    return {0: True, 1: False}.get(result.returncode)
+
+
+def is_followup_skill_file(path: Path) -> bool:
+    if path.name != "SKILL.md" or not path.is_file() or yaml is None:
+        return False
+    try:
+        text = path.read_text(encoding="utf-8")
+        match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", text, re.DOTALL)
+        data = yaml.safe_load(match.group(1)) if match else None
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return False
+    return isinstance(data, dict) and data.get("name") == "book-to-skill-followup"
+
+
+def is_followup_self_validation(root: Path) -> bool:
+    return (canonical(root) == canonical(Path(__file__).parents[1])
+            and is_followup_skill_file(root / "SKILL.md"))
+
+
+def nested_followup_paths(root: Path) -> list[Path]:
+    paths = [path for path in root.rglob("SKILL.md")
+             if path != root / "SKILL.md" and is_followup_skill_file(path)]
+    paths.extend(path for path in root.rglob("book-to-skill-followup") if path.is_symlink())
+    return sorted(set(paths))
+
+
+def check_followup_tool_leakage(project: Path, root: Path, errors: list[dict]) -> None:
+    """Reject a copied production helper without treating text mentions as installations."""
+    for path in nested_followup_paths(root):
+        reported = path.parent if path.name == "SKILL.md" else path
+        errors.append({"file": str(reported.relative_to(project)), "code": "nested-followup-tool",
+                       "message": "generated skills may not contain the follow-up production tool"})
+    if is_followup_self_validation(root):
+        return
+    install_paths = tuple(project / path for path in FOLLOWUP_DELIVERY_PATHS)
+    installed = tuple(path for path in install_paths if path.exists() or path.is_symlink())
+    if not installed:
+        return
+    repository, git_error = git_root(project)
+    for path in installed:
+        relative = str(path.relative_to(project))
+        if git_error:
+            errors.append({"file": relative, "code": "git-status-unavailable",
+                           "message": "cannot determine whether follow-up tooling is tracked or ignored"})
+            continue
+        elif repository is None:
+            errors.append({"file": relative, "code": "unmanaged-followup-tool",
+                           "message": "a non-Git project may not contain the follow-up production tool"})
+            continue
+        tracked = git_tracks(repository, path)
+        if tracked is True:
+            errors.append({"file": relative, "code": "tracked-followup-tool",
+                           "message": "the follow-up production tool is tracked for delivery"})
+            continue
+        ignored = git_ignores(repository, path) if tracked is False else None
+        if tracked is None or ignored is None:
+            errors.append({"file": relative, "code": "git-status-unavailable",
+                           "message": "cannot determine whether follow-up tooling is tracked or ignored"})
+        elif ignored is False:
+            errors.append({"file": relative, "code": "unexcluded-followup-tool",
+                           "message": "untracked follow-up tooling must be explicitly ignored"})
+
+
 def package_files(root: Path, project: Path, errors: list[dict]) -> list[Path]:
     files: list[Path] = []
     for path in sorted(root.rglob("*")):
@@ -246,6 +359,7 @@ def run(project: Path, skill: str, documents: list[str], run_dir: Path | None) -
         if not allowed_claude_alias(project, requested, root):
             return {"verdict": "fail", "errors": [{"code": "invalid-skill-alias", "message": "only paired in-project Claude skill aliases are allowed"}]}
         aliases.append({"path": str(requested.relative_to(project)), "target": str(root.relative_to(project))})
+    check_followup_tool_leakage(project, root, errors)
     if yaml is None or MarkdownIt is None:
         missing = [name for name, present in (("PyYAML", yaml), ("markdown-it-py", MarkdownIt)) if present is None]
         return {"verdict": "blocked", "errors": [{"code": "parser-unavailable", "message": ", ".join(missing)}], "warnings": [], "advisories": []}
